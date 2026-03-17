@@ -114,8 +114,14 @@ To exclude specific files from auto-convert, add filename patterns to `markdown-
 | Setting | Default | Description |
 |---|---|---|
 | `markdown-pdf.styles` | `[]` | Paths to additional CSS files. All `\` must be written as `\\` on Windows. |
+| `markdown-pdf.allowPathsOutsideWorkspace` | `false` | Allow images, includes, and stylesheets to reference files outside the VS Code workspace root. See [`markdown-pdf.allowPathsOutsideWorkspace`](#markdown-pdfallowpathsoutsideworkspace) below. |
 | `markdown-pdf.highlight` | `true` | Enable syntax highlighting. |
 | `markdown-pdf.highlightStyle` | `"github.css"` | highlight.js theme. See [highlight.js demo](https://highlightjs.org/static/demo/). |
+
+### `markdown-pdf.allowPathsOutsideWorkspace`
+- Type: boolean
+- Default: `false`
+- Description: Allow images, includes, and stylesheets to reference files outside the VS Code workspace root. By default, all local file references are restricted to the workspace to prevent path traversal attacks. Set to `true` only if you have intentional cross-workspace resource references (e.g., a shared stylesheet at `/projects/shared/styles.css`). **Enabling this setting disables path traversal protections.**
 
 ### Markdown
 
@@ -191,7 +197,7 @@ Output:
 
 ## File Includes
 
-The [markdown-it-include](https://github.com/camelaissani/markdown-it-include) plugin inserts the contents of another Markdown file at the include site. Paths are relative to the file containing the include directive.
+Includes insert the contents of another Markdown file at the include site. Paths are relative to the file containing the include directive.
 
 Syntax: `:[display text](relative-path-to-file.md)`
 
@@ -203,6 +209,8 @@ Example:
 ```
 
 The output contains the rendered content of each included file in sequence.
+
+> **Security note (v2.1.0+):** File includes are now processed by the built-in `inlineIncludesSecure` function (replacing the `markdown-it-include` plugin). All included paths are validated against the workspace root, with a maximum include depth of 10 and per-branch cycle detection. Include paths that reference files outside the workspace root are blocked by default. To allow cross-workspace includes, set `markdown-pdf.allowPathsOutsideWorkspace` to `true`.
 
 ## Page Breaks
 

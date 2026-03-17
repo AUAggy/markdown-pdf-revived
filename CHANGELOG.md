@@ -4,6 +4,27 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-03-17
+
+### Security
+
+- **File access restricted to workspace**: Images, stylesheets, and `:[include](file.md)` paths are now validated against the workspace root. Traversal attempts (`../`, encoded variants, symlinks pointing outside the workspace) are blocked.
+- **Safer PDF export**: Temp files are written to unpredictable directories and always cleaned up, even on failure.
+- **Chromium sandbox enabled by default**: `--no-sandbox` is no longer passed unconditionally. On Linux, the extension tries with sandbox first and only falls back if the system reports sandbox unavailability.
+- **Event handler attributes blocked**: All `on*` attributes (e.g. `onclick`, `ondrop`, `onanimationend`) are now stripped from sanitized HTML, not just a hardcoded subset.
+
+### Changed
+
+- `:[include](file.md)` processing is now built-in (previously handled by `markdown-it-include`). Includes are limited to 10 levels of nesting and circular references are detected.
+
+### Breaking Changes
+
+- **Local file references are restricted to the workspace root by default.** Images, includes, and stylesheets that reference files outside the open workspace will be blocked. Set `markdown-pdf.allowPathsOutsideWorkspace: true` to restore the previous behaviour.
+
+### Added
+
+- `markdown-pdf.allowPathsOutsideWorkspace` (boolean, default: `false`): Allow images, includes, and stylesheets to reference files outside the workspace root. Useful for shared stylesheets (e.g. `/projects/shared/style.css`). Disabling this (the default) prevents path traversal attacks.
+
 ## [2.0.0] - 2026-03-07
 
 This release takes over from `yzane.markdown-pdf`, which has had no maintainer

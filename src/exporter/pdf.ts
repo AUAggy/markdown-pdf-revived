@@ -1,8 +1,9 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { config } from '../config/settings';
-import { isExistsPath, deleteFile } from '../utils/file';
+import { isExistsPath } from '../utils/file';
 import { showErrorMessage } from '../utils/logger';
 import { exportHtml } from './html';
 import { getOutputDir, readUserStylesAsText } from '../template/page';
@@ -65,6 +66,28 @@ function transformTemplate(templateText: string): string {
     .replace('%%ISO-TIME%%', new Date().toISOString().substring(11, 19));
 }
 
+export function createTempHtmlFile(baseName: string, data: string): { tempDir: string; tmpfilename: string } {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-'));
+  const tmpfilename = path.join(tempDir, `${baseName}.html`);
+  // 'wx' flag: exclusive create — fails if file already exists (belt-and-suspenders)
+  fs.writeFileSync(tmpfilename, data, { encoding: 'utf8', flag: 'wx' });
+  return { tempDir, tmpfilename };
+}
+
+export function cleanupTempDir(tempDir: string | undefined): void {
+  if (tempDir) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+export function buildLaunchArgs(language: string, sandboxFallback: boolean): string[] {
+  const args = ['--lang=' + language];
+  if (sandboxFallback) {
+    args.push('--no-sandbox', '--disable-setuid-sandbox');
+  }
+  return args;
+}
+
 export async function exportPdf(
   data: string,
   filename: string,
@@ -77,30 +100,31 @@ export async function exportPdf(
     return;
   }
 
-  vscode.window.setStatusBarMessage('');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscodeRt = require('vscode') as typeof import('vscode');
+  vscodeRt.window.setStatusBarMessage('');
   const exportFilename = getOutputDir(filename, uri);
 
-  return vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `[Markdown PDF]: Exporting (${type}) ...` },
+  return vscodeRt.window.withProgress(
+    { location: vscodeRt.ProgressLocation.Notification, title: `[Markdown PDF]: Exporting (${type}) ...` },
     async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const vscodeRt = require('vscode') as typeof import('vscode');
+      let tempDir: string | undefined;
+      let browser: import('puppeteer-core').Browser | undefined;
       try {
         if (type === 'html') {
           exportHtml(data, exportFilename);
-          vscode.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
+          vscodeRt.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
           return;
         }
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const puppeteer = require('puppeteer-core') as typeof import('puppeteer-core');
         const f = path.parse(filename);
-        // On Windows, files on the WSL filesystem have UNC paths (\\wsl.localhost\...).
-        // Chrome blocks file:// access to UNC paths. Write the temp file to the
-        // system temp directory instead, which is always on a regular Windows path.
-        const tmpDir = (process.platform === 'win32' && f.dir.startsWith('\\\\'))
-          ? os.tmpdir()
-          : f.dir;
-        const tmpfilename = path.join(tmpDir, f.name + '_tmp.html');
-        exportHtml(data, tmpfilename);
+        const temp = createTempHtmlFile(f.name, data);
+        tempDir = temp.tempDir;
+        const tmpfilename = temp.tmpfilename;
 
         // Resolve Chrome: user setting → auto-detected system Chrome
         let execPath = config.executablePath();
@@ -110,16 +134,37 @@ export async function exportPdf(
           }
         }
 
-        const browser = await puppeteer.launch({
-          executablePath: execPath,
-          args: ['--lang=' + vscode.env.language, '--no-sandbox', '--disable-setuid-sandbox'],
-        });
+        // Sandbox strategy: try with sandbox first, fall back on Linux if unavailable
+        if (process.platform === 'linux') {
+          try {
+            browser = await puppeteer.launch({
+              executablePath: execPath,
+              args: buildLaunchArgs(vscodeRt.env.language, false),
+            });
+          } catch (launchError: unknown) {
+            const msg = launchError instanceof Error ? launchError.message : String(launchError);
+            if (msg.includes('No usable sandbox') || msg.includes('Running as root without --no-sandbox')) {
+              showErrorMessage('Chromium sandbox unavailable — falling back to --no-sandbox. This reduces security isolation.');
+              browser = await puppeteer.launch({
+                executablePath: execPath,
+                args: buildLaunchArgs(vscodeRt.env.language, true),
+              });
+            } else {
+              throw launchError;
+            }
+          }
+        } else {
+          browser = await puppeteer.launch({
+            executablePath: execPath,
+            args: buildLaunchArgs(vscodeRt.env.language, false),
+          });
+        }
+
         const page = await browser.newPage();
         await page.setDefaultTimeout(0);
-        await page.goto(vscode.Uri.file(tmpfilename).toString(), { waitUntil: 'networkidle0', timeout: config.timeout(uri) });
+        await page.goto(vscodeRt.Uri.file(tmpfilename).toString(), { waitUntil: 'networkidle0', timeout: config.timeout(uri) });
 
         // PR #399: wait for Mermaid async SVG rendering before PDF capture.
-        // The callbacks run in the browser context — document is available there.
         const hasMermaid = await page.evaluate(
           /* eslint-disable-next-line @typescript-eslint/no-implied-eval */
           '() => document.querySelectorAll(".mermaid").length > 0'
@@ -148,15 +193,12 @@ export async function exportPdf(
           });
         }
 
-        await browser.close();
-
-        if (isExistsPath(tmpfilename)) {
-          deleteFile(tmpfilename);
-        }
-
-        vscode.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
+        vscodeRt.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
       } catch (error) {
         showErrorMessage('exportPdf()', error);
+      } finally {
+        if (browser) { try { await browser.close(); } catch { /* best effort */ } }
+        cleanupTempDir(tempDir);
       }
     }
   );

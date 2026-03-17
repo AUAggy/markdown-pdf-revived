@@ -1,35 +1,80 @@
 import * as path from 'path';
-import * as url from 'url';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { EXTENSION_ROOT, config } from '../config/settings';
 import { readFile } from '../utils/file';
 import { showErrorMessage, setBooleanValue } from '../utils/logger';
 import { slug } from './slug';
 import { markdownItKaTeX } from './katex';
+import { safeResolvePath, safeReadFile } from '../utils/pathSecurity';
 
-function convertImgPath(src: string, filename: string): string {
+const INCLUDE_RE = /:\[[^\]]+\]\(([^)]+)\)/g;
+const MAX_INCLUDE_DEPTH = 10;
+
+export function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export function inlineIncludesSecure(
+  markdown: string,
+  filename: string,
+  allowedRoot: string,
+  depth = 0,
+  seen = new Set<string>()
+): string {
+  if (depth >= MAX_INCLUDE_DEPTH) return markdown;
+
+  return markdown.replace(INCLUDE_RE, (_match: string, includeTarget: string) => {
+    const baseDir = path.dirname(filename);
+
+    // Resolve path first for cycle detection
+    const realPath = safeResolvePath(includeTarget, baseDir, allowedRoot);
+    if (!realPath) return '';
+    if (seen.has(realPath)) return '';
+
+    // Read file content; safeReadFile uses O_NOFOLLOW internally to prevent symlink-swap races
+    const content = safeReadFile(includeTarget, baseDir, allowedRoot);
+    if (content === null) return '';
+
+    // Per-branch copy of seen set
+    const nextSeen = new Set(seen);
+    nextSeen.add(realPath);
+    return inlineIncludesSecure(content, realPath, allowedRoot, depth + 1, nextSeen);
+  });
+}
+
+export function convertImgPath(src: string, filename: string, allowedRoot: string): string {
   try {
-    let href = decodeURIComponent(src)
+    const cleaned = decodeURIComponent(src)
       .replace(/("|')/g, '')
-      .replace(/\\/g, '/')
-      .replace(/#/g, '%23');
-    const protocol = url.parse(href).protocol;
-    if (protocol === 'file:' && !href.startsWith('file:///')) {
-      return href.replace(/^file:\/\//, 'file:///');
-    } else if (protocol === 'file:') {
-      return href;
-    } else if (!protocol || path.isAbsolute(href)) {
-      href = path.resolve(path.dirname(filename), href)
-        .replace(/\\/g, '/')
-        .replace(/#/g, '%23');
-      if (href.startsWith('//')) return 'file:' + href;
-      if (href.startsWith('/')) return 'file://' + href;
-      return 'file:///' + href;
+      .replace(/\\/g, '/');
+    let protocol: string | null = null;
+    try { protocol = new URL(cleaned).protocol; } catch { /* relative path or malformed URL */ }
+
+    // Pass through only http/https URLs
+    if (protocol === 'https:' || protocol === 'http:') return src;
+
+    const baseDir = path.dirname(filename);
+    const resolved = safeResolvePath(src, baseDir, allowedRoot);
+    if (!resolved) return '';
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const vscodeRt = require('vscode') as typeof import('vscode');
+      return vscodeRt.Uri.file(resolved).toString().replace(/#/g, '%23');
+    } catch {
+      // vscode not available (e.g. in test environment) — build URI manually
+      const normalized = resolved.replace(/\\/g, '/').replace(/#/g, '%23');
+      if (normalized.startsWith('/')) return 'file://' + normalized;
+      return 'file:///' + normalized;
     }
-    return src;
   } catch (error) {
     showErrorMessage('convertImgPath()', error);
-    return src;
+    return '';
   }
 }
 
@@ -66,6 +111,13 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const grayMatter = require('gray-matter') as (s: string) => { data: Record<string, unknown>; content: string };
   const matterParts = grayMatter(text);
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscode = require('vscode') as typeof import('vscode');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getAllowedRoot } = require('../utils/pathSecurity') as typeof import('../utils/pathSecurity');
+  const allowedRoot = getAllowedRoot(filename);
+  const markdownContent = inlineIncludesSecure(matterParts.content, filename, allowedRoot);
 
   let statusbarMessage: vscode.Disposable | undefined;
   try {
@@ -111,7 +163,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         if (type === 'html') {
           href = decodeURIComponent(href).replace(/("|')/g, '');
         } else {
-          href = convertImgPath(href, filename);
+          href = convertImgPath(href, filename, allowedRoot);
         }
         token.attrs[token.attrIndex('src')][1] = href;
         return defaultRender ? defaultRender(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options) as string;
@@ -125,7 +177,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $('img').each(function (_i: number, elem: any) {
             const src = $(elem).attr('src') ?? '';
-            $(elem).attr('src', convertImgPath(src, filename));
+            $(elem).attr('src', convertImgPath(src, filename, allowedRoot));
           });
           return $.html();
         };
@@ -147,7 +199,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
           const emojipath = path.join(EXTENSION_ROOT, 'node_modules', 'emoji-images', 'pngs', emoji + '.png');
           const emojidata = (readFile(emojipath, null) as Buffer).toString('base64');
           if (emojidata) {
-            return `<img class="emoji" alt="${emoji}" src="data:image/png;base64,${emojidata}" />`;
+            return `<img class="emoji" alt="${escapeHtmlAttr(emoji)}" src="data:image/png;base64,${emojidata}" />`;
           }
           return ':' + emoji + ':';
         };
@@ -165,7 +217,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         validate: (name: string) => name.trim().length > 0,
         render: (tokens: { info: string; nesting: number }[], idx: number) => {
           if (tokens[idx].info.trim() !== '') {
-            return `<div class="${tokens[idx].info.trim()}">\n`;
+            return `<div class="${escapeHtmlAttr(tokens[idx].info.trim())}">\n`;
           }
           return '</div>\n';
         },
@@ -174,15 +226,9 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       md.use(require('markdown-it-footnote'));
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      md.use(require('markdown-it-include'), {
-        root: path.dirname(filename),
-        includeRe: /:\[.+\]\((.+\..+)\)/i,
-      });
-
       statusbarMessage.dispose();
       return {
-        html: transformCallouts(md.render(matterParts.content)),
+        html: transformCallouts(md.render(markdownContent)),
         title: (typeof matterParts.data['title'] === 'string' && matterParts.data['title'].trim() !== '')
           ? (matterParts.data['title'] as string).trim()
           : undefined,
