@@ -1,0 +1,5 @@
+If Markdown PDF (Revived) saves you the chore of wrangling Markdown into publication-ready PDFs, consider sponsoring it.
+
+This fork grew out of the original `yzane/vscode-markdown-pdf` project when that repo sat untouched with 257 open issues and 35 open pull requests. I rewrote the extension in TypeScript, bundled it with esbuild, scrubbed every dependency for vulnerabilities, hardened path handling and temp files, and keep every issue and pull request moving forward. The result is a local-only renderer that still ships rich features—KaTeX, Mermaid, footnotes, GitHub callouts—without leaking data or relying on remote services.
+
+I usually work as an infrastructure engineer, so reliability is my first principle: if a feature or fix doesn’t behave like physics, it’s still broken. Sponsorship keeps this fork alive, keeps Chrome compatibility up to date, and funds the next round of bug fixes and new features you ask for. If these improvements are worth the time that saved you, please back the work so I can keep iterating and supporting the community.
