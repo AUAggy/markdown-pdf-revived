@@ -1,10 +1,10 @@
 import * as path from 'path';
 import * as os from 'os';
-import * as fs from 'fs';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { EXTENSION_ROOT, config } from '../config/settings';
 import { readFile, isExistsDir, mkdir } from '../utils/file';
 import { showErrorMessage } from '../utils/logger';
+import { safeResolvePath, safeReadFile, getAllowedRoot } from '../utils/pathSecurity';
 
 function makeCss(filename: string): string {
   try {
@@ -16,25 +16,55 @@ function makeCss(filename: string): string {
   }
 }
 
-export function resolveStylePath(href: string, uri: vscode.Uri): string {
-  if (path.isAbsolute(href)) return href;
-  const relToFile = path.resolve(path.dirname(uri.fsPath), href);
-  if (fs.existsSync(relToFile)) return relToFile;
-  const workspaceRoot = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath ?? path.dirname(uri.fsPath);
-  return path.resolve(workspaceRoot, href);
+// Testable core logic without vscode dependency
+export function resolveStylePathSecure(href: string, baseDir: string, allowedRoot: string): string | null {
+  return safeResolvePath(href, baseDir, allowedRoot);
+}
+
+export function readUserStylesAsTextCore(hrefs: string[], baseDir: string, allowedRoot: string): string {
+  let css = '';
+  for (const href of hrefs) {
+    const content = safeReadFile(href, baseDir, allowedRoot);
+    if (content !== null) {
+      css += content + '\n';
+    }
+  }
+  return css;
+}
+
+export function fixHrefSecure(href: string, baseDir: string, allowedRoot: string): string | null {
+  if (!href) return href;
+  // Pass through remote URLs
+  if (href.startsWith('http://') || href.startsWith('https://')) return href;
+
+  let expanded = href;
+  if (href.startsWith('~')) {
+    expanded = href.replace(/^~/, os.homedir());
+  }
+  return safeResolvePath(expanded, baseDir, allowedRoot);
+}
+
+export function resolveStylePath(href: string, uri: vscode.Uri): string | null {
+  const allowedRoot = getAllowedRoot(uri.fsPath);
+  const baseDir = path.dirname(uri.fsPath);
+  return resolveStylePathSecure(href, baseDir, allowedRoot);
 }
 
 function fixHref(resource: vscode.Uri, href: string): string {
   try {
     if (!href) return href;
-    const hrefUri = vscode.Uri.parse(href);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vscodeRt = require('vscode') as typeof import('vscode');
+    const hrefUri = vscodeRt.Uri.parse(href);
     if (['http', 'https'].includes(hrefUri.scheme)) return hrefUri.toString();
-    if (href.startsWith('~')) return vscode.Uri.file(href.replace(/^~/, os.homedir())).toString();
-    if (path.isAbsolute(href)) return vscode.Uri.file(href).toString();
-    // Resolve relative paths from workspace root
-    const root = vscode.workspace.getWorkspaceFolder(resource);
-    if (root) return vscode.Uri.file(path.join(root.uri.fsPath, href)).toString();
-    return vscode.Uri.file(path.join(path.dirname(resource.fsPath), href)).toString();
+
+    const allowedRoot = getAllowedRoot(resource.fsPath);
+    const resolved = fixHrefSecure(href, path.dirname(resource.fsPath), allowedRoot);
+    if (!resolved) {
+      showErrorMessage(`Blocked stylesheet outside workspace: ${href}. Set markdown-pdf.allowPathsOutsideWorkspace to true if intentional.`);
+      return '';
+    }
+    return vscodeRt.Uri.file(resolved).toString();
   } catch (error) {
     showErrorMessage('fixHref()', error);
     return href;
@@ -55,8 +85,10 @@ export function readStyles(uri: vscode.Uri): string {
 
     // 3. KaTeX styles (linked, not inlined, so relative font paths resolve in Puppeteer)
     if (config.math()) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const vscodeRt = require('vscode') as typeof import('vscode');
       const katexCss = path.join(EXTENSION_ROOT, 'node_modules', 'katex', 'dist', 'katex.min.css');
-      style += `<link rel="stylesheet" href="${vscode.Uri.file(katexCss).toString()}">`;
+      style += `<link rel="stylesheet" href="${vscodeRt.Uri.file(katexCss).toString()}">`;
     }
 
     // 4. Syntax highlighting
@@ -74,8 +106,14 @@ export function readStyles(uri: vscode.Uri): string {
 
     // 6. User custom stylesheets
     for (const href of config.styles(uri)) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const vscodeRt = require('vscode') as typeof import('vscode');
       const resolved = resolveStylePath(href, uri);
-      style += `<link rel="stylesheet" href="${vscode.Uri.file(resolved).toString()}" type="text/css">`;
+      if (resolved) {
+        style += `<link rel="stylesheet" href="${vscodeRt.Uri.file(resolved).toString()}" type="text/css">`;
+      } else {
+        showErrorMessage(`Blocked stylesheet outside workspace: ${href}. Set markdown-pdf.allowPathsOutsideWorkspace to true if intentional.`);
+      }
     }
 
     return style;
@@ -86,16 +124,9 @@ export function readStyles(uri: vscode.Uri): string {
 }
 
 export function readUserStylesAsText(uri: vscode.Uri): string {
-  let css = '';
-  for (const href of config.styles(uri)) {
-    try {
-      const resolved = resolveStylePath(href, uri);
-      css += fs.readFileSync(resolved, 'utf8') + '\n';
-    } catch {
-      // skip files that cannot be read
-    }
-  }
-  return css;
+  const allowedRoot = getAllowedRoot(uri.fsPath);
+  const baseDir = path.dirname(uri.fsPath);
+  return readUserStylesAsTextCore(config.styles(uri), baseDir, allowedRoot);
 }
 
 export function makeHtml(content: string, uri: vscode.Uri, frontmatterTitle?: string): string | null {
@@ -138,7 +169,9 @@ export function getOutputDir(filename: string, resource?: vscode.Uri): string {
     }
 
     // Relative: resolve from workspace root, fall back to file directory
-    const root = vscode.workspace.getWorkspaceFolder(resource);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vscodeRt = require('vscode') as typeof import('vscode');
+    const root = vscodeRt.workspace.getWorkspaceFolder(resource);
     if (root) {
       outputDir = path.join(root.uri.fsPath, outputDirectory);
       mkdir(outputDir);
