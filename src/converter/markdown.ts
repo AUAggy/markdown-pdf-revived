@@ -1,11 +1,43 @@
 import * as path from 'path';
 import * as url from 'url';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { EXTENSION_ROOT, config } from '../config/settings';
 import { readFile } from '../utils/file';
 import { showErrorMessage, setBooleanValue } from '../utils/logger';
 import { slug } from './slug';
 import { markdownItKaTeX } from './katex';
+import { safeResolvePath, safeReadFile } from '../utils/pathSecurity';
+
+const INCLUDE_RE = /:\[[^\]]+\]\(([^)]+)\)/g;
+const MAX_INCLUDE_DEPTH = 10;
+
+export function inlineIncludesSecure(
+  markdown: string,
+  filename: string,
+  allowedRoot: string,
+  depth = 0,
+  seen = new Set<string>()
+): string {
+  if (depth >= MAX_INCLUDE_DEPTH) return markdown;
+
+  return markdown.replace(INCLUDE_RE, (_match: string, includeTarget: string) => {
+    const baseDir = path.dirname(filename);
+
+    // Resolve path first for cycle detection
+    const realPath = safeResolvePath(includeTarget, baseDir, allowedRoot);
+    if (!realPath) return '';
+    if (seen.has(realPath)) return '';
+
+    // Read file content (TOCTOU-safe)
+    const content = safeReadFile(includeTarget, baseDir, allowedRoot);
+    if (content === null) return '';
+
+    // Per-branch copy of seen set
+    const nextSeen = new Set(seen);
+    nextSeen.add(realPath);
+    return inlineIncludesSecure(content, realPath, allowedRoot, depth + 1, nextSeen);
+  });
+}
 
 function convertImgPath(src: string, filename: string): string {
   try {
@@ -66,6 +98,13 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const grayMatter = require('gray-matter') as (s: string) => { data: Record<string, unknown>; content: string };
   const matterParts = grayMatter(text);
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscode = require('vscode') as typeof import('vscode');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getAllowedRoot } = require('../utils/pathSecurity') as typeof import('../utils/pathSecurity');
+  const allowedRoot = getAllowedRoot(filename);
+  const markdownContent = inlineIncludesSecure(matterParts.content, filename, allowedRoot);
 
   let statusbarMessage: vscode.Disposable | undefined;
   try {
@@ -174,15 +213,9 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       md.use(require('markdown-it-footnote'));
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      md.use(require('markdown-it-include'), {
-        root: path.dirname(filename),
-        includeRe: /:\[.+\]\((.+\..+)\)/i,
-      });
-
       statusbarMessage.dispose();
       return {
-        html: transformCallouts(md.render(matterParts.content)),
+        html: transformCallouts(md.render(markdownContent)),
         title: (typeof matterParts.data['title'] === 'string' && matterParts.data['title'].trim() !== '')
           ? (matterParts.data['title'] as string).trim()
           : undefined,

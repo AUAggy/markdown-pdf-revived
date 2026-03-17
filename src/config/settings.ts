@@ -1,5 +1,5 @@
 import * as path from 'path';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import * as os from 'os';
 
 // All asset paths (styles/, template/, data/, node_modules/) are relative to
@@ -7,10 +7,14 @@ import * as os from 'os';
 export const EXTENSION_ROOT = path.join(__dirname, '..');
 
 function pdf(resource?: vscode.Uri) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscode = require('vscode') as typeof import('vscode');
   return vscode.workspace.getConfiguration('markdown-pdf', resource);
 }
 
 function md() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscode = require('vscode') as typeof import('vscode');
   return vscode.workspace.getConfiguration('markdown');
 }
 
