@@ -45,7 +45,7 @@ describe('sanitizeContent', () => {
     assert.ok(result.includes('safe'));
   });
 
-  it('returns null on error (fail-closed)', () => {
+  it('returns non-null for valid HTML input (basic sanity check)', () => {
     const result = sanitizeContent('<p>hello</p>');
     assert.ok(result !== null);
   });
