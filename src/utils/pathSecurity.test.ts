@@ -136,7 +136,7 @@ describe('safeReadFile', () => {
     }
   });
 
-  it('uses O_NOFOLLOW on non-Windows to prevent ELOOP on symlinks', function () {
+  it('reads file via symlink pointing within workspace (real path resolved before open)', function () {
     if (process.platform === 'win32') this.skip();
     fs.symlinkSync(path.join(ws.root, 'valid.md'), path.join(ws.root, 'internal-link.md'));
     try {

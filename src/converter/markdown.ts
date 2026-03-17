@@ -28,7 +28,7 @@ export function inlineIncludesSecure(
     if (!realPath) return '';
     if (seen.has(realPath)) return '';
 
-    // Read file content (TOCTOU-safe)
+    // Read file content; safeReadFile uses O_NOFOLLOW internally to prevent symlink-swap races
     const content = safeReadFile(includeTarget, baseDir, allowedRoot);
     if (content === null) return '';
 
