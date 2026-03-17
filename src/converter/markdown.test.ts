@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { inlineIncludesSecure } from './markdown';
+import { inlineIncludesSecure, convertImgPath } from './markdown';
 
 // Mocha globals (no @types/mocha in strict mode — declare minimally)
 declare function describe(title: string, fn: () => void): void;
@@ -95,5 +95,36 @@ describe('inlineIncludesSecure', () => {
     // "diamond-leaf" should appear twice (once per branch)
     const count = (result.match(/diamond-leaf/g) || []).length;
     assert.strictEqual(count, 2);
+  });
+});
+
+describe('convertImgPath', () => {
+  let ws: ReturnType<typeof createTestWorkspace>;
+
+  before(() => {
+    ws = createTestWorkspace();
+    fs.writeFileSync(path.join(ws.root, 'image.png'), 'fake-png');
+  });
+  after(() => { ws.cleanup(); });
+
+  it('returns file:// URI for valid image within workspace', () => {
+    const result = convertImgPath('image.png', path.join(ws.root, 'doc.md'), ws.root);
+    assert.ok(result.startsWith('file://'));
+    assert.ok(result.includes('image.png'));
+  });
+
+  it('returns empty string for image path outside workspace', () => {
+    const result = convertImgPath('../../../etc/passwd', path.join(ws.root, 'doc.md'), ws.root);
+    assert.strictEqual(result, '');
+  });
+
+  it('passes through https URLs unchanged', () => {
+    const result = convertImgPath('https://example.com/img.png', path.join(ws.root, 'doc.md'), ws.root);
+    assert.strictEqual(result, 'https://example.com/img.png');
+  });
+
+  it('passes through http URLs unchanged', () => {
+    const result = convertImgPath('http://example.com/img.png', path.join(ws.root, 'doc.md'), ws.root);
+    assert.strictEqual(result, 'http://example.com/img.png');
   });
 });

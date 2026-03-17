@@ -39,29 +39,33 @@ export function inlineIncludesSecure(
   });
 }
 
-function convertImgPath(src: string, filename: string): string {
+export function convertImgPath(src: string, filename: string, allowedRoot: string): string {
   try {
-    let href = decodeURIComponent(src)
+    const cleaned = decodeURIComponent(src)
       .replace(/("|')/g, '')
-      .replace(/\\/g, '/')
-      .replace(/#/g, '%23');
-    const protocol = url.parse(href).protocol;
-    if (protocol === 'file:' && !href.startsWith('file:///')) {
-      return href.replace(/^file:\/\//, 'file:///');
-    } else if (protocol === 'file:') {
-      return href;
-    } else if (!protocol || path.isAbsolute(href)) {
-      href = path.resolve(path.dirname(filename), href)
-        .replace(/\\/g, '/')
-        .replace(/#/g, '%23');
-      if (href.startsWith('//')) return 'file:' + href;
-      if (href.startsWith('/')) return 'file://' + href;
-      return 'file:///' + href;
+      .replace(/\\/g, '/');
+    const protocol = url.parse(cleaned).protocol;
+
+    // Pass through remote URLs
+    if (protocol && protocol !== 'file:') return src;
+
+    const baseDir = path.dirname(filename);
+    const resolved = safeResolvePath(src, baseDir, allowedRoot);
+    if (!resolved) return '';
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const vscodeRt = require('vscode') as typeof import('vscode');
+      return vscodeRt.Uri.file(resolved).toString().replace(/#/g, '%23');
+    } catch {
+      // vscode not available (e.g. in test environment) — build URI manually
+      const normalized = resolved.replace(/\\/g, '/').replace(/#/g, '%23');
+      if (normalized.startsWith('/')) return 'file://' + normalized;
+      return 'file:///' + normalized;
     }
-    return src;
   } catch (error) {
     showErrorMessage('convertImgPath()', error);
-    return src;
+    return '';
   }
 }
 
@@ -150,7 +154,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         if (type === 'html') {
           href = decodeURIComponent(href).replace(/("|')/g, '');
         } else {
-          href = convertImgPath(href, filename);
+          href = convertImgPath(href, filename, allowedRoot);
         }
         token.attrs[token.attrIndex('src')][1] = href;
         return defaultRender ? defaultRender(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options) as string;
@@ -164,7 +168,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $('img').each(function (_i: number, elem: any) {
             const src = $(elem).attr('src') ?? '';
-            $(elem).attr('src', convertImgPath(src, filename));
+            $(elem).attr('src', convertImgPath(src, filename, allowedRoot));
           });
           return $.html();
         };
