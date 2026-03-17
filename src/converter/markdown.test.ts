@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { inlineIncludesSecure, convertImgPath } from './markdown';
+import { inlineIncludesSecure, convertImgPath, escapeHtmlAttr } from './markdown';
 
 // Mocha globals (no @types/mocha in strict mode — declare minimally)
 declare function describe(title: string, fn: () => void): void;
@@ -126,5 +126,28 @@ describe('convertImgPath', () => {
   it('passes through http URLs unchanged', () => {
     const result = convertImgPath('http://example.com/img.png', path.join(ws.root, 'doc.md'), ws.root);
     assert.strictEqual(result, 'http://example.com/img.png');
+  });
+});
+
+describe('escapeHtmlAttr', () => {
+  it('HTML-encodes double quotes to prevent attribute breakout', () => {
+    assert.strictEqual(escapeHtmlAttr('" onmouseover="alert(1)'), '&quot; onmouseover=&quot;alert(1)');
+  });
+
+  it('passes through normal class names unchanged', () => {
+    assert.strictEqual(escapeHtmlAttr('warning'), 'warning');
+    assert.strictEqual(escapeHtmlAttr('my-custom-class'), 'my-custom-class');
+  });
+
+  it('encodes angle brackets', () => {
+    assert.strictEqual(escapeHtmlAttr('<script>'), '&lt;script&gt;');
+  });
+
+  it('encodes ampersands', () => {
+    assert.strictEqual(escapeHtmlAttr('a&b'), 'a&amp;b');
+  });
+
+  it('encodes single quotes', () => {
+    assert.strictEqual(escapeHtmlAttr("it's"), 'it&#39;s');
   });
 });

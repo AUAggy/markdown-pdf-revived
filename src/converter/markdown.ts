@@ -10,6 +10,15 @@ import { safeResolvePath, safeReadFile } from '../utils/pathSecurity';
 const INCLUDE_RE = /:\[[^\]]+\]\(([^)]+)\)/g;
 const MAX_INCLUDE_DEPTH = 10;
 
+export function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export function inlineIncludesSecure(
   markdown: string,
   filename: string,
@@ -208,7 +217,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         validate: (name: string) => name.trim().length > 0,
         render: (tokens: { info: string; nesting: number }[], idx: number) => {
           if (tokens[idx].info.trim() !== '') {
-            return `<div class="${tokens[idx].info.trim()}">\n`;
+            return `<div class="${escapeHtmlAttr(tokens[idx].info.trim())}">\n`;
           }
           return '</div>\n';
         },
