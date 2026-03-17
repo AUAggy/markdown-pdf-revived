@@ -4,6 +4,29 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-03-17
+
+### Security
+
+- **Path traversal hardening**: All local file references (images, includes, stylesheets) are now validated against an allowed root directory. Paths using `../` sequences, percent-encoded traversal (`%2E%2E%2F`), or absolute paths outside the workspace are blocked.
+- **Symlink protection**: File resolution uses `fs.realpathSync` to follow symlinks before boundary checks, preventing symlink-based escapes from the workspace.
+- **TOCTOU mitigation**: File reads use `O_NOFOLLOW` (non-Windows) via fd-based `openSync`/`fstatSync`/`readFileSync` to prevent symlink swap attacks between path resolution and file open.
+- **Secure temp files**: PDF export now uses `fs.mkdtempSync` for unpredictable temp directories (replaces predictable `_tmp.html` filename). Temp files are always cleaned up in a `finally` block.
+- **Chromium sandbox**: `--no-sandbox` is no longer passed unconditionally. On Linux only, the extension tries with sandbox first and falls back to `--no-sandbox` only if Chromium reports sandbox unavailability.
+- **DOMPurify hardening**: Replaced incomplete `FORBID_ATTR` allowlist with a `uponSanitizeAttribute` hook that blocks all `on*` event handler attributes (covers current and future event types).
+- **Container class escaping**: Markdown-it container class names are now HTML-encoded to prevent attribute injection.
+- **Secure include processing**: `markdown-it-include` plugin replaced with `inlineIncludesSecure` — supports depth limiting (max 10), per-branch cycle detection, and boundary checks on all included file paths.
+
+### Breaking Changes
+
+- **`markdown-it-include` removed**: The `:[include](file.md)` syntax still works but is now handled by the built-in `inlineIncludesSecure` function, which enforces workspace boundary checks. Include paths that previously worked by referencing files outside the workspace root will now be blocked by default.
+- **Image and stylesheet paths restricted to workspace**: Images and stylesheets that reference files outside the VS Code workspace root will be blocked and produce an empty/missing output. This is a security boundary, not a bug.
+- **Absolute stylesheet paths blocked**: Stylesheet paths configured in `markdown-pdf.styles` that are absolute paths outside the workspace root will be blocked.
+
+### New Configuration
+
+- `markdown-pdf.allowPathsOutsideWorkspace` (boolean, default: `false`): Set to `true` to allow images, includes, and stylesheets to reference files outside the workspace root. Use this if you have legitimate cross-workspace resource references (e.g., a shared stylesheet at `/projects/shared/style.css`). **Enabling this disables path traversal protections.**
+
 ## [2.0.0] - 2026-03-07
 
 This release takes over from `yzane.markdown-pdf`, which has had no maintainer
