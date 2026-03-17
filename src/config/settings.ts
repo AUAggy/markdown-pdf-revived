@@ -37,6 +37,7 @@ export const config = {
     return { top: m['top'] ?? '2cm', right: m['right'] ?? '2.5cm', bottom: m['bottom'] ?? '2cm', left: m['left'] ?? '2.5cm' };
   },
   timeout: (resource?: vscode.Uri): number => pdf(resource).get<number>('timeout') ?? 60000,
+  allowPathsOutsideWorkspace: (): boolean => pdf().get<boolean>('allowPathsOutsideWorkspace') ?? false,
   markdownStyles: (): string[] => md().get<string[]>('styles') ?? [],
   homedir: (): string => os.homedir(),
 };

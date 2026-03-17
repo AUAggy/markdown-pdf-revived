@@ -346,6 +346,11 @@
           "type": "number",
           "default": 60000,
           "description": "Timeout in milliseconds for PDF export. Increase for large documents or slow machines."
+        },
+        "markdown-pdf.allowPathsOutsideWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow includes, images, and stylesheets to reference files outside the workspace root. Disabling this (default) prevents path traversal attacks."
         }
       }
     }
