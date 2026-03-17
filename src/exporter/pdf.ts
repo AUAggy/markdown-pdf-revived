@@ -111,6 +111,7 @@ export async function exportPdf(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const vscodeRt = require('vscode') as typeof import('vscode');
       let tempDir: string | undefined;
+      let browser: import('puppeteer-core').Browser | undefined;
       try {
         if (type === 'html') {
           exportHtml(data, exportFilename);
@@ -134,7 +135,6 @@ export async function exportPdf(
         }
 
         // Sandbox strategy: try with sandbox first, fall back on Linux if unavailable
-        let browser: import('puppeteer-core').Browser;
         if (process.platform === 'linux') {
           try {
             browser = await puppeteer.launch({
@@ -193,11 +193,11 @@ export async function exportPdf(
           });
         }
 
-        await browser.close();
         vscodeRt.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
       } catch (error) {
         showErrorMessage('exportPdf()', error);
       } finally {
+        if (browser) { try { await browser.close(); } catch { /* best effort */ } }
         cleanupTempDir(tempDir);
       }
     }
