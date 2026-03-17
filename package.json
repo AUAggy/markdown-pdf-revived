@@ -358,6 +358,7 @@
   },
   "devDependencies": {
     "@types/markdown-it-footnote": "^3.0.4",
+    "@types/mocha": "^10.0.10",
     "@types/mustache": "^4.2.6",
     "@types/node": "^25.3.5",
     "@types/node-fetch": "^2.6.13",
@@ -367,6 +368,7 @@
     "glob": "^13.0.6",
     "mocha": "^11.7.5",
     "removeNPMAbsolutePaths": "^2.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
