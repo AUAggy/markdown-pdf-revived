@@ -90,7 +90,7 @@ To exclude specific files from auto-convert, add filename patterns to `markdown-
 - Emoji support
 - KaTeX math: `$...$` for inline, `$$...$$` for display
 - Mermaid diagrams, rendered locally with no external calls
-- File includes via [markdown-it-include](https://github.com/camelaissani/markdown-it-include)
+- File includes via `:[text](file.md)` syntax (built-in, workspace-sandboxed)
 - Custom div containers via [markdown-it-container](https://github.com/markdown-it/markdown-it-container)
 - Checkbox and task list support via [markdown-it-checkbox](https://github.com/mcecot/markdown-it-checkbox)
 - Footnotes via `[^1]` syntax
@@ -119,9 +119,8 @@ To exclude specific files from auto-convert, add filename patterns to `markdown-
 | `markdown-pdf.highlightStyle` | `"github.css"` | highlight.js theme. See [highlight.js demo](https://highlightjs.org/static/demo/). |
 
 ### `markdown-pdf.allowPathsOutsideWorkspace`
-- Type: boolean
-- Default: `false`
-- Description: Allow images, includes, and stylesheets to reference files outside the VS Code workspace root. By default, all local file references are restricted to the workspace to prevent path traversal attacks. Set to `true` only if you have intentional cross-workspace resource references (e.g., a shared stylesheet at `/projects/shared/styles.css`). **Enabling this setting disables path traversal protections.**
+
+Allow images, includes, and stylesheets to reference files outside the workspace root. Disabled by default. Enable only if you have intentional cross-workspace references (e.g. a shared stylesheet at `/projects/shared/styles.css`).
 
 ### Markdown
 
