@@ -1,5 +1,4 @@
 import * as path from 'path';
-import * as url from 'url';
 import type * as vscode from 'vscode';
 import { EXTENSION_ROOT, config } from '../config/settings';
 import { readFile } from '../utils/file';
@@ -44,10 +43,11 @@ export function convertImgPath(src: string, filename: string, allowedRoot: strin
     const cleaned = decodeURIComponent(src)
       .replace(/("|')/g, '')
       .replace(/\\/g, '/');
-    const protocol = url.parse(cleaned).protocol;
+    let protocol: string | null = null;
+    try { protocol = new URL(cleaned).protocol; } catch { /* relative path or malformed URL */ }
 
-    // Pass through remote URLs
-    if (protocol && protocol !== 'file:') return src;
+    // Pass through only http/https URLs
+    if (protocol === 'https:' || protocol === 'http:') return src;
 
     const baseDir = path.dirname(filename);
     const resolved = safeResolvePath(src, baseDir, allowedRoot);
