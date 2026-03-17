@@ -43,18 +43,50 @@ export function safeResolvePath(href: string, baseDir: string, allowedRoot: stri
   return null;
 }
 
-export function safeReadFile(_href: string, _baseDir: string, _allowedRoot: string): string | null {
-  throw new Error('Not implemented');
+export function safeReadFile(href: string, baseDir: string, allowedRoot: string): string | null {
+  const resolvedPath = safeResolvePath(href, baseDir, allowedRoot);
+  if (!resolvedPath) return null;
+
+  let fd: number | undefined;
+  try {
+    // O_NOFOLLOW prevents symlink swap between realpathSync and open (non-Windows only)
+    const flags = process.platform === 'win32'
+      ? fs.constants.O_RDONLY
+      : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
+    fd = fs.openSync(resolvedPath, flags);
+
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+
+    // readFileSync(fd) reads from position 0 on a freshly opened fd
+    return fs.readFileSync(fd, 'utf-8');
+  } catch {
+    return null; // ELOOP on symlink swap, permission error, or any other error
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* best effort */ }
+    }
+  }
 }
 
 export function computeAllowedRoot(
-  _workspaceFolder: string | undefined,
-  _filename: string,
-  _allowOutside: boolean
+  workspaceFolder: string | undefined,
+  filename: string,
+  allowOutside: boolean
 ): string {
-  throw new Error('Not implemented');
+  if (allowOutside) {
+    return path.parse(path.resolve(filename)).root;
+  }
+  return workspaceFolder ?? path.dirname(filename);
 }
 
-export function getAllowedRoot(_filename: string): string {
-  throw new Error('Not implemented');
+export function getAllowedRoot(filename: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vscode = require('vscode') as typeof import('vscode');
+  const resource = vscode.Uri.file(filename);
+  const workspace = vscode.workspace.getWorkspaceFolder(resource);
+  const allowOutside = vscode.workspace
+    .getConfiguration('markdown-pdf')
+    .get<boolean>('allowPathsOutsideWorkspace') ?? false;
+  return computeAllowedRoot(workspace?.uri.fsPath, filename, allowOutside);
 }
