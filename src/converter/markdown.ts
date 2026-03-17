@@ -199,7 +199,7 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
           const emojipath = path.join(EXTENSION_ROOT, 'node_modules', 'emoji-images', 'pngs', emoji + '.png');
           const emojidata = (readFile(emojipath, null) as Buffer).toString('base64');
           if (emojidata) {
-            return `<img class="emoji" alt="${emoji}" src="data:image/png;base64,${emojidata}" />`;
+            return `<img class="emoji" alt="${escapeHtmlAttr(emoji)}" src="data:image/png;base64,${emojidata}" />`;
           }
           return ':' + emoji + ':';
         };

@@ -67,7 +67,7 @@ function fixHref(resource: vscode.Uri, href: string): string {
     return vscodeRt.Uri.file(resolved).toString();
   } catch (error) {
     showErrorMessage('fixHref()', error);
-    return href;
+    return '';
   }
 }
 
