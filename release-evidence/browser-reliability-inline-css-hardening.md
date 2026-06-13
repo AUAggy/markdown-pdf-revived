@@ -37,7 +37,7 @@ Final local macOS package evidence:
 
 - Size: 11,203,595 bytes
 - Files: 1,463
-- SHA-256: `44cb772c802d314e44d7ec9ef6bac56f3bf79811b7a7c958260e2b40c36cfcda`
+- SHA-256: recorded in the retained `work/release/package-evidence.json` for the tested artifact. VSCE archive timestamps change the checksum on each packaging run even when the manifest and source commit are unchanged.
 
 ## CI Evidence
 
