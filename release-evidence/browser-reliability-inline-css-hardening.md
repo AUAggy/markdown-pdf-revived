@@ -37,7 +37,7 @@ Final local macOS package evidence:
 
 - Size: 11,203,595 bytes
 - Files: 1,463
-- SHA-256: `eb3bc26e7eb2908f1d2f51ead2912544bd62b288bf1607ca768531ff0b320b1b`
+- SHA-256: `44cb772c802d314e44d7ec9ef6bac56f3bf79811b7a7c958260e2b40c36cfcda`
 
 ## CI Evidence
 
