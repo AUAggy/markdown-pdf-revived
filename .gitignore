@@ -1,5 +1,6 @@
 .history
 .vscode-test
+.vscode/
 node_modules
 dist/
 work/**
@@ -8,6 +9,9 @@ work/**
 docs/
 plans/
 AGENTS.md
+release-evidence/
+release-notes-*.md
+next-release-notes.md
 .eslintrc.json
 .DS_Store
 test-docs/*.pdf

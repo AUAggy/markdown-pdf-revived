@@ -75,6 +75,8 @@ async function main() {
     /^plans\//,
     /^release-evidence\//,
     /^AGENTS\.md$/,
+    /^\.vscode\//,
+    /^(?:next-)?release-notes(?:[-_.].*)?\.md$/i,
   ];
   for (const entry of manifest) {
     assert.ok(!forbiddenPatterns.some((pattern) => pattern.test(entry)), `unexpected packaged file: ${entry}`);

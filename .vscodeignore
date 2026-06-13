@@ -12,6 +12,7 @@ docs/**
 plans/**
 release-evidence/**
 AGENTS.md
+release-notes-*.md
 src/**
 dist/*.map
 esbuild.js
