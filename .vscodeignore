@@ -3,10 +3,15 @@
 .gitignore
 .DS_Store
 .playwright-mcp/**
+.claude/**
 original-icon.png
+next-release-notes.md
 test/**
 test-docs/**
 docs/**
+plans/**
+release-evidence/**
+AGENTS.md
 src/**
 dist/*.map
 esbuild.js
