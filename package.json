@@ -359,7 +359,11 @@
     "vscode:prepublish": "node esbuild.js",
     "build": "node esbuild.js",
     "watch": "node esbuild.js --watch",
-    "test": "node ./test/runTest.js"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "mocha --require ts-node/register \"src/**/*.test.ts\"",
+    "test:integration": "npm run build && node ./test/runTest.js",
+    "test:package": "npm run build && node ./test/package.js",
+    "test": "npm run typecheck && npm run test:unit && npm run test:integration"
   },
   "devDependencies": {
     "@types/markdown-it-footnote": "^3.0.4",
