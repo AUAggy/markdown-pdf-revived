@@ -6,6 +6,8 @@ work/**
 *.vsix
 *.bat
 docs/
+plans/
+AGENTS.md
 .eslintrc.json
 .DS_Store
 test-docs/*.pdf
