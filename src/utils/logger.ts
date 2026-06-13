@@ -9,6 +9,10 @@ export function showErrorMessage(msg: string, error?: unknown): void {
   }
 }
 
+export function logError(msg: string, error: unknown): void {
+  console.error('ERROR: ' + msg, error);
+}
+
 export function setBooleanValue(frontmatterValue: unknown, configValue: boolean): boolean {
   if (frontmatterValue === false) return false;
   return (frontmatterValue as boolean) || configValue;

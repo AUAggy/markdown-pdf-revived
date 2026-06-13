@@ -4,7 +4,7 @@ import { config } from './config/settings';
 import { convertMarkdownToHtml } from './converter/markdown';
 import { sanitizeContent } from './converter/sanitize';
 import { makeHtml } from './template/page';
-import { exportPdf, checkPuppeteerBinary, markChromiumReady } from './exporter/pdf';
+import { exportPdf } from './exporter/pdf';
 import { showErrorMessage } from './utils/logger';
 import { isExistsPath } from './utils/file';
 import type { OptionType, ExportType } from './types';
@@ -12,8 +12,6 @@ import type { OptionType, ExportType } from './types';
 const SUPPORTED_FORMATS: ExportType[] = ['html', 'pdf'];
 
 export function activate(context: vscode.ExtensionContext): void {
-  init();
-
   const commands = [
     vscode.commands.registerCommand('extension.markdown-pdf.settings', () => markdownPdf('settings')),
     vscode.commands.registerCommand('extension.markdown-pdf.pdf', () => markdownPdf('pdf')),
@@ -105,20 +103,5 @@ function isMarkdownPdfOnSaveExclude(editor: vscode.TextEditor): boolean {
   } catch (error) {
     showErrorMessage('isMarkdownPdfOnSaveExclude()', error);
     return false;
-  }
-}
-
-function init(): void {
-  try {
-    if (checkPuppeteerBinary()) {
-      markChromiumReady();
-    } else {
-      vscode.window.showErrorMessage(
-        '[Markdown PDF] Chrome or Chromium not found. ' +
-        'Please install Google Chrome, or set markdown-pdf.executablePath in settings to your browser path.'
-      );
-    }
-  } catch (error) {
-    showErrorMessage('init()', error);
   }
 }
