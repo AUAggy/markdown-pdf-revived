@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { createTempHtmlFile, cleanupTempDir, buildLaunchArgs } from './pdf';
+import { createTempHtmlFile, cleanupTempDir } from './pdf';
 
 // Mocha globals
 declare function describe(title: string, fn: () => void): void;
@@ -48,23 +48,5 @@ describe('cleanupTempDir', () => {
 
   it('does nothing when passed undefined', () => {
     assert.doesNotThrow(() => cleanupTempDir(undefined));
-  });
-});
-
-describe('buildLaunchArgs', () => {
-  it('with sandboxFallback=true, includes --no-sandbox', () => {
-    const result = buildLaunchArgs('en', true);
-    assert.ok(result.includes('--no-sandbox'));
-    assert.ok(result.includes('--disable-setuid-sandbox'));
-  });
-
-  it('with sandboxFallback=false, does not include --no-sandbox', () => {
-    const result = buildLaunchArgs('en', false);
-    assert.ok(!result.includes('--no-sandbox'));
-  });
-
-  it('always includes --lang', () => {
-    const result = buildLaunchArgs('fr', false);
-    assert.ok(result.includes('--lang=fr'));
   });
 });

@@ -3,61 +3,12 @@ import * as os from 'os';
 import * as path from 'path';
 import type * as vscode from 'vscode';
 import { config } from '../config/settings';
-import { isExistsPath } from '../utils/file';
-import { showErrorMessage } from '../utils/logger';
+import { BrowserLaunchError, launchBrowserWithPolicy } from '../browser/launch';
+import { formatBrowserLaunchFailure, formatBrowserNotFound } from '../browser/diagnostics';
+import { resolveBrowser } from '../browser/resolver';
+import { logError, showErrorMessage } from '../utils/logger';
 import { exportHtml } from './html';
 import { getOutputDir, readUserStylesAsText } from '../template/page';
-
-// Set to true once Chrome/Chromium is confirmed present at activation time.
-let chromiumReady = false;
-
-export function markChromiumReady(): void {
-  chromiumReady = true;
-}
-
-export function getChromiumDefaultPaths(): string[] {
-  if (process.platform === 'win32') {
-    return [
-      (process.env['LOCALAPPDATA'] ?? '') + '\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      (process.env['LOCALAPPDATA'] ?? '') + '\\Chromium\\Application\\chrome.exe',
-    ];
-  } else if (process.platform === 'darwin') {
-    return [
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    ];
-  } else {
-    return [
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/snap/bin/chromium',
-    ];
-  }
-}
-
-export function checkPuppeteerBinary(): boolean {
-  try {
-    const executablePath = config.executablePath();
-    if (executablePath && isExistsPath(executablePath)) {
-      markChromiumReady();
-      return true;
-    }
-    for (const p of getChromiumDefaultPaths()) {
-      if (isExistsPath(p)) {
-        markChromiumReady();
-        return true;
-      }
-    }
-    return false;
-  } catch (error) {
-    showErrorMessage('checkPuppeteerBinary()', error);
-    return false;
-  }
-}
 
 function transformTemplate(templateText: string): string {
   return templateText
@@ -80,26 +31,12 @@ export function cleanupTempDir(tempDir: string | undefined): void {
   }
 }
 
-export function buildLaunchArgs(language: string, sandboxFallback: boolean): string[] {
-  const args = ['--lang=' + language];
-  if (sandboxFallback) {
-    args.push('--no-sandbox', '--disable-setuid-sandbox');
-  }
-  return args;
-}
-
 export async function exportPdf(
   data: string,
   filename: string,
   type: string,
   uri: vscode.Uri
 ): Promise<void> {
-  if (!chromiumReady) return;
-  if (!checkPuppeteerBinary()) {
-    showErrorMessage('Chromium or Chrome does not exist! See https://github.com/yzane/vscode-markdown-pdf#install');
-    return;
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const vscodeRt = require('vscode') as typeof import('vscode');
   vscodeRt.window.setStatusBarMessage('');
@@ -114,8 +51,14 @@ export async function exportPdf(
       let browser: import('puppeteer-core').Browser | undefined;
       try {
         if (type === 'html') {
-          exportHtml(data, exportFilename);
+          await exportHtml(data, exportFilename);
           vscodeRt.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
+          return;
+        }
+
+        const resolution = resolveBrowser({ configuredPath: config.executablePath() });
+        if (!resolution.found) {
+          void vscodeRt.window.showErrorMessage(formatBrowserNotFound(resolution.context));
           return;
         }
 
@@ -126,39 +69,12 @@ export async function exportPdf(
         tempDir = temp.tempDir;
         const tmpfilename = temp.tmpfilename;
 
-        // Resolve Chrome: user setting → auto-detected system Chrome
-        let execPath = config.executablePath();
-        if (!execPath || !isExistsPath(execPath)) {
-          for (const p of getChromiumDefaultPaths()) {
-            if (isExistsPath(p)) { execPath = p; break; }
-          }
-        }
-
-        // Sandbox strategy: try with sandbox first, fall back on Linux if unavailable
-        if (process.platform === 'linux') {
-          try {
-            browser = await puppeteer.launch({
-              executablePath: execPath,
-              args: buildLaunchArgs(vscodeRt.env.language, false),
-            });
-          } catch (launchError: unknown) {
-            const msg = launchError instanceof Error ? launchError.message : String(launchError);
-            if (msg.includes('No usable sandbox') || msg.includes('Running as root without --no-sandbox')) {
-              showErrorMessage('Chromium sandbox unavailable — falling back to --no-sandbox. This reduces security isolation.');
-              browser = await puppeteer.launch({
-                executablePath: execPath,
-                args: buildLaunchArgs(vscodeRt.env.language, true),
-              });
-            } else {
-              throw launchError;
-            }
-          }
-        } else {
-          browser = await puppeteer.launch({
-            executablePath: execPath,
-            args: buildLaunchArgs(vscodeRt.env.language, false),
-          });
-        }
+        browser = await launchBrowserWithPolicy(
+          (options) => puppeteer.launch(options),
+          resolution.executablePath,
+          process.platform,
+          vscodeRt.env.language
+        );
 
         const page = await browser.newPage();
         await page.setDefaultTimeout(0);
@@ -195,7 +111,16 @@ export async function exportPdf(
 
         vscodeRt.window.setStatusBarMessage('$(markdown) ' + exportFilename, 10000);
       } catch (error) {
-        showErrorMessage('exportPdf()', error);
+        if (error instanceof BrowserLaunchError) {
+          void vscodeRt.window.showErrorMessage(formatBrowserLaunchFailure(error, process.platform));
+          logError('exportPdf(): browser launch failed', {
+            executablePath: error.executablePath,
+            initialError: error.initialError,
+            fallbackError: error.fallbackError,
+          });
+        } else {
+          showErrorMessage('exportPdf()', error);
+        }
       } finally {
         if (browser) { try { await browser.close(); } catch { /* best effort */ } }
         cleanupTempDir(tempDir);
