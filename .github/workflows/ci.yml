@@ -23,10 +23,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run build
+      - run: npm audit --omit=dev
       - name: Run extension integration tests
         if: runner.os != 'Linux'
         run: npm run test:integration
       - name: Run extension integration tests on Linux
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration
-      - run: npm run test:package
+      - name: Run installed VSIX package tests
+        if: runner.os != 'Linux'
+        run: npm run test:package
+      - name: Run installed VSIX package tests on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-evidence-${{ runner.os }}
+          path: work/release/

@@ -1,0 +1,13 @@
+{
+  "name": "markdown-pdf-package-test-harness",
+  "displayName": "Markdown PDF Package Test Harness",
+  "version": "1.0.0",
+  "publisher": "markdown-pdf-tests",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "*"
+  ]
+}

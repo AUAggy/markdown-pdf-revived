@@ -14,6 +14,12 @@ suite('Markdown PDF extension', () => {
     );
 
     assert.ok(extension, 'extension should be installed in the development host');
+    if (process.env.MARKDOWN_PDF_PACKAGE_TEST === '1') {
+      assert.ok(
+        extension.extensionPath.includes('.vscode-test'),
+        `package smoke must load the installed VSIX, got ${extension.extensionPath}`
+      );
+    }
     await extension.activate();
 
     const commands = await vscode.commands.getCommands(true);
