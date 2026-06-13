@@ -1,5 +1,18 @@
 import { showErrorMessage } from '../utils/logger';
 
+// RCDATA/raw-text elements whose opening tags cause HTML5 parsers (including jsdom) to
+// enter a mode where all subsequent content is consumed as raw text until the matching
+// close tag. If one of these tags appears inline in markdown prose (e.g. "use <title> to
+// set the page title") and is passed through by markdown-it (html: true), jsdom will
+// swallow everything that follows as the element's text content. DOMPurify never sees
+// those subsequent nodes, so they silently disappear from the output — truncating the PDF.
+// Pre-escaping these tags before jsdom parses the HTML prevents that entirely.
+const RCDATA_TAG_RE = /(<\/?(title|textarea|xmp|noscript|noframes|listing|plaintext)\b[^>]*>)/gi;
+
+export function preEscapeRcdataTags(html: string): string {
+  return html.replace(RCDATA_TAG_RE, m => m.replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+}
+
 // Sanitize user-supplied HTML to prevent XSS (CVE-2024-7739).
 // Only markdown-rendered content is sanitized — not trusted internal assets
 // (inlined Mermaid script, KaTeX/hljs stylesheets, etc.).
@@ -30,7 +43,7 @@ export function sanitizeContent(html: string): string | null {
       }
     });
 
-    return DOMPurify.sanitize(html, {
+    return DOMPurify.sanitize(preEscapeRcdataTags(html), {
       FORCE_BODY: true,
       ALLOW_DATA_ATTR: true,
       ADD_TAGS: ['svg', 'math', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
