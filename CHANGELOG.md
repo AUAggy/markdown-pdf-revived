@@ -4,6 +4,26 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- User-supplied `<style>` elements and their CSS payloads are removed from PDF and HTML exports. Sanitized `style="..."` attributes remain supported; trusted CSS should use a workspace-local file through `markdown-pdf.styles`.
+- Updated DOMPurify and Mermaid to patched release lines and pinned vulnerable transitive runtime dependencies to patched versions.
+
+### Fixed
+
+- Browser detection now uses deterministic platform-specific candidates for stable Chrome, Chromium, and Microsoft Edge.
+- Invalid configured browser paths fall back to system detection and remain visible in actionable diagnostics.
+- Browser launch errors now identify the selected executable and platform with bounded stderr summaries.
+- Linux retries with `--no-sandbox` only for recognized sandbox-unavailable failures; other failures are not retried.
+- HTML export no longer depends on browser discovery, and activation no longer warns users who only export HTML.
+
+### Changed
+
+- WSL uses Linux browser paths and requires a browser installed inside the WSL distribution.
+- The test and release pipeline now covers Linux, Windows, and macOS, real-browser PDF export, negative inline-CSS network checks, and installed VSIX smoke tests.
+
 ## [2.1.0] - 2026-03-17
 
 ### Security
