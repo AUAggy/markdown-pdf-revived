@@ -1,8 +1,8 @@
 {
   "name": "markdown-pdf-revived",
   "displayName": "Markdown PDF (Revived)",
-  "description": "Markdown to PDF/HTML converter. Local rendering, no external servers, Chrome required.",
-  "version": "2.1.0",
+  "description": "Markdown to PDF/HTML converter. Local rendering with no external servers.",
+  "version": "3.0.0",
   "publisher": "AUAggy",
   "author": "AUAggy",
   "icon": "images/icon.png",
@@ -258,7 +258,7 @@
         "markdown-pdf.executablePath": {
           "type": "string",
           "default": "",
-          "description": "Path to a Chromium or Chrome executable to run instead of the bundled Chromium."
+          "description": "Path to a Chrome, Chromium, or Microsoft Edge executable. Leave empty to use automatic detection."
         },
         "markdown-pdf.displayHeaderFooter": {
           "type": "boolean",
