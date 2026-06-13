@@ -118,9 +118,21 @@ To exclude specific files from auto-convert, add filename patterns to `markdown-
 | `markdown-pdf.highlight` | `true` | Enable syntax highlighting. |
 | `markdown-pdf.highlightStyle` | `"github.css"` | highlight.js theme. See [highlight.js demo](https://highlightjs.org/static/demo/). |
 
+User-supplied `<style>` elements in Markdown are removed during sanitization for both PDF and HTML export. Put trusted custom CSS in a workspace-local file instead:
+
+```json
+"markdown-pdf.styles": [
+  "styles/export.css"
+]
+```
+
+Sanitized `style="..."` attributes remain supported. There is no setting to re-enable `<style>` elements.
+
 ### `markdown-pdf.allowPathsOutsideWorkspace`
 
 Allow images, includes, and stylesheets to reference files outside the workspace root. Disabled by default. Enable only if you have intentional cross-workspace references (e.g. a shared stylesheet at `/projects/shared/styles.css`).
+
+Enabling this setting lets Markdown documents reference files outside the trusted workspace boundary. Prefer copying export styles into the workspace.
 
 ### Markdown
 
@@ -223,6 +235,7 @@ Insert a page break with:
 
 - Chrome or Chromium must be installed separately. The extension does not bundle or download a browser.
 - Online CSS URLs (e.g., `https://example.com/styles.css`) do not resolve reliably in PDF output. Prefer local stylesheet paths.
+- Inline `<style>` elements are blocked. Use a workspace-local file through `markdown-pdf.styles`.
 
 ## License
 

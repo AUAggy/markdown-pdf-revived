@@ -8,9 +8,42 @@ import { showErrorMessage } from '../utils/logger';
 // those subsequent nodes, so they silently disappear from the output — truncating the PDF.
 // Pre-escaping these tags before jsdom parses the HTML prevents that entirely.
 const RCDATA_TAG_RE = /(<\/?(title|textarea|xmp|noscript|noframes|listing|plaintext)\b[^>]*>)/gi;
+const STYLE_OPEN_RE = /<style\b[^>]*>/gi;
+const STYLE_CLOSE_RE = /<\/style\s*>/i;
+const STRAY_STYLE_CLOSE_RE = /<\/style\s*>/gi;
+const RECOVERABLE_BLOCK_TAG_RE =
+  /<(?:p|h[1-6]|div|section|article|main|ul|ol|li|table|thead|tbody|tr|td|th|pre|blockquote|hr)\b/i;
 
 export function preEscapeRcdataTags(html: string): string {
   return html.replace(RCDATA_TAG_RE, m => m.replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+}
+
+export function stripStyleElements(html: string): string {
+  let output = '';
+  let cursor = 0;
+  STYLE_OPEN_RE.lastIndex = 0;
+
+  for (let opening = STYLE_OPEN_RE.exec(html); opening; opening = STYLE_OPEN_RE.exec(html)) {
+    output += html.slice(cursor, opening.index);
+    const contentStart = opening.index + opening[0].length;
+    const remainder = html.slice(contentStart);
+    const closing = STYLE_CLOSE_RE.exec(remainder);
+
+    if (closing) {
+      cursor = contentStart + closing.index + closing[0].length;
+      STYLE_OPEN_RE.lastIndex = cursor;
+      continue;
+    }
+
+    const recoverable = RECOVERABLE_BLOCK_TAG_RE.exec(remainder);
+    if (recoverable) {
+      output += stripStyleElements(remainder.slice(recoverable.index));
+    }
+    return output.replace(STRAY_STYLE_CLOSE_RE, '');
+  }
+
+  output += html.slice(cursor);
+  return output.replace(STRAY_STYLE_CLOSE_RE, '');
 }
 
 // Sanitize user-supplied HTML to prevent XSS (CVE-2024-7739).
@@ -43,13 +76,13 @@ export function sanitizeContent(html: string): string | null {
       }
     });
 
-    return DOMPurify.sanitize(preEscapeRcdataTags(html), {
+    return DOMPurify.sanitize(preEscapeRcdataTags(stripStyleElements(html)), {
       FORCE_BODY: true,
       ALLOW_DATA_ATTR: true,
       ADD_TAGS: ['svg', 'math', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
         'mover', 'munder', 'munderover', 'mtext', 'mtable', 'mtr', 'mtd',
         'semantics', 'annotation'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base'],
+      FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'base'],
     });
   } catch (error) {
     showErrorMessage('sanitizeContent(): HTML sanitization failed — export blocked for safety.', error);

@@ -136,7 +136,7 @@
           "items": {
             "type": "string"
           },
-          "description": "A list of local paths to the stylesheets to use from the markdown-pdf. All '\\' need to be written as '\\\\'."
+          "description": "Workspace-local CSS files for trusted export customization. User-supplied <style> elements in Markdown are blocked. All '\\' need to be written as '\\\\'."
         },
         "markdown-pdf.highlight": {
           "type": "boolean",
