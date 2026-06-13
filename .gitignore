@@ -12,6 +12,7 @@ AGENTS.md
 release-evidence/
 release-notes-*.md
 next-release-notes.md
+MIGRATION.md
 .eslintrc.json
 .DS_Store
 test-docs/*.pdf

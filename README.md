@@ -13,39 +13,24 @@
 
 <p align="center">
   <a href="#getting-started">Install</a> &bull;
-  <a href="#what-changed-in-v2">What changed</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#settings">Settings</a> &bull;
-  <a href="#requirements">Requirements</a>
+  <a href="#requirements">Requirements</a> &bull;
+  <a href="#upgrade-notes">Upgrade</a>
 </p>
 
-Converts Markdown files to PDF or HTML from within VSCode. All rendering is local; no external servers, no telemetry, Chrome required.
-
-## What Changed in v2
-
-This is a fork of [yzane/vscode-markdown-pdf](https://github.com/yzane/vscode-markdown-pdf), which had no maintainer activity since late 2023. See [CHANGELOG.md](CHANGELOG.md) for the full list of changes and [MIGRATION.md](MIGRATION.md) for upgrade instructions.
-
-**Removed:** PlantUML (sent source to plantuml.com), PNG/JPEG export, Chromium auto-download, 10 settings.
-
-**Added:** KaTeX math, DOMPurify sanitization (CVE-2024-7739), Mermaid async render fix, TypeScript rewrite, esbuild bundling (~11MB), footnotes, GitHub-style callouts, configurable export timeout.
-
-**Changed:** Default margins, highlight theme (github.css), header/footer off by default.
-
-| Area | Detail |
-|---|---|
-| PlantUML | Removed; diagram source was sent to `plantuml.com` on each render. Use Mermaid instead. |
-| PNG/JPEG export | Removed. PDF and HTML output only. |
-| Chromium auto-download | Removed. The API (`createBrowserFetcher`) was dropped in puppeteer v20. |
-| 10 settings | Removed or folded into fixed behavior. See [MIGRATION.md](MIGRATION.md). |
+Converts Markdown files to PDF or HTML from within VSCode. All rendering is local, with no external servers or telemetry.
 
 ## Requirements
 
-Chrome or Chromium must be installed. The extension detects it automatically at standard installation paths on macOS, Linux, and Windows.
+A stable Chrome, Chromium, or Microsoft Edge installation is required for PDF export. HTML export does not require a browser. The extension detects supported browsers automatically at standard installation paths on macOS, Linux, and Windows.
 
-To use a non-standard Chrome binary:
+On WSL, install the browser inside the Linux distribution.
+
+To use a non-standard browser binary:
 
 ```json
-"markdown-pdf.executablePath": "/path/to/chrome"
+"markdown-pdf.executablePath": "/path/to/browser"
 ```
 
 Restart VSCode after changing this setting.
@@ -107,7 +92,7 @@ To exclude specific files from auto-convert, add filename patterns to `markdown-
 | `markdown-pdf.convertOnSave` | `false` | Convert on save. Requires VSCode restart to take effect. |
 | `markdown-pdf.convertOnSaveExclude` | `[]` | Filename patterns to skip during auto-convert. |
 | `markdown-pdf.outputDirectory` | `""` | Directory for output files. Relative paths resolve from the workspace root. |
-| `markdown-pdf.executablePath` | `""` | Path to a Chrome or Chromium binary. Leave empty to use auto-detection. |
+| `markdown-pdf.executablePath` | `""` | Path to a Chrome, Chromium, or Microsoft Edge binary. Leave empty to use auto-detection. |
 
 ### Styles
 
@@ -171,7 +156,7 @@ Header and footer templates support these tokens:
 
 ## Mermaid Diagrams
 
-Mermaid diagrams are rendered locally using the bundled `mermaid.min.js`. Before PDF capture, the extension waits for Mermaid's async SVG rendering to complete by polling for the `data-processed` attribute on each `.mermaid` element. This ensures diagrams appear in PDFs rather than as raw code blocks.
+Mermaid diagrams render locally. PDF export waits for each diagram to finish rendering before capture.
 
 ~~~markdown
 ```mermaid
@@ -184,7 +169,7 @@ flowchart TD
 ```
 ~~~
 
-PlantUML has been removed. It sent diagram source to `plantuml.com` on each render. For migration examples and equivalent Mermaid syntax, see [MIGRATION.md](MIGRATION.md).
+PlantUML has been removed. It sent diagram source to `plantuml.com` on each render. Use Mermaid for local diagram rendering.
 
 ## Custom Containers
 
@@ -221,7 +206,7 @@ Example:
 
 The output contains the rendered content of each included file in sequence.
 
-> **Security note (v2.1.0+):** File includes are now processed by the built-in `inlineIncludesSecure` function (replacing the `markdown-it-include` plugin). All included paths are validated against the workspace root, with a maximum include depth of 10 and per-branch cycle detection. Include paths that reference files outside the workspace root are blocked by default. To allow cross-workspace includes, set `markdown-pdf.allowPathsOutsideWorkspace` to `true`.
+Includes are limited to 10 levels, detect circular references, and cannot leave the workspace by default. Set `markdown-pdf.allowPathsOutsideWorkspace` to `true` only for trusted cross-workspace files.
 
 ## Page Breaks
 
@@ -233,9 +218,38 @@ Insert a page break with:
 
 ## Known Limitations
 
-- Chrome or Chromium must be installed separately. The extension does not bundle or download a browser.
+- A supported browser must be installed separately for PDF export. The extension does not bundle or download a browser.
 - Online CSS URLs (e.g., `https://example.com/styles.css`) do not resolve reliably in PDF output. Prefer local stylesheet paths.
 - Inline `<style>` elements are blocked. Use a workspace-local file through `markdown-pdf.styles`.
+
+## Upgrade Notes
+
+### Version 3
+
+- Move Markdown `<style>` content to a trusted workspace-local CSS file configured through `markdown-pdf.styles`.
+- Sanitized `style="..."` attributes remain supported.
+- On WSL, install Chrome, Chromium, or Microsoft Edge inside the Linux distribution.
+
+### From `yzane.markdown-pdf`
+
+Version 2 removed PlantUML, PNG/JPEG export, and automatic Chromium downloads. Use Mermaid for diagrams and install a supported browser for PDF export.
+
+Remove settings that are no longer supported:
+
+| Removed setting | Current behavior |
+|---|---|
+| `markdown-pdf.scale` | Fixed at `1`. |
+| `markdown-pdf.pageRanges` | Exports all pages. |
+| `markdown-pdf.width`, `markdown-pdf.height` | Use `markdown-pdf.format`. |
+| `markdown-pdf.includeDefaultStyles` | Default styles are always enabled. |
+| `markdown-pdf.stylesRelativePathFile` | Style paths resolve from the source file, then the workspace root. |
+| `markdown-pdf.outputDirectoryRelativePathFile` | Relative output paths resolve from the workspace root. |
+| `markdown-pdf.StatusbarMessageTimeout`, `markdown-pdf.debug` | Removed. |
+| `markdown-pdf.markdown-it-include.enable` | File includes are always enabled. |
+
+Version 2 also changed the default syntax theme to `github.css`, disabled headers and footers by default, and increased the default margins. Local images, includes, and stylesheets are restricted to the workspace unless `markdown-pdf.allowPathsOutsideWorkspace` is enabled.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## License
 

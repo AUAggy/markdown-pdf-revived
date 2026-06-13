@@ -13,6 +13,7 @@ plans/**
 release-evidence/**
 AGENTS.md
 release-notes-*.md
+MIGRATION.md
 src/**
 dist/*.map
 esbuild.js
