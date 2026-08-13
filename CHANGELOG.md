@@ -6,6 +6,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Updated DOMPurify to 3.4.13, fixing hook-handling advisories in the sanitizer this extension relies on (GHSA-c2j3-45gr-mqc4, GHSA-cmwh-pvxp-8882, GHSA-55q2-fjhq-7xh7).
+- Refreshed pinned transitive dependency versions that had new advisories published since 3.0.0: brace-expansion 5.0.9, ip-address 10.5.0, undici 7.29.0, ws 8.21.3.
+
 ### Fixed
 
 - PDF export no longer hangs the progress notification if the browser fails to close after export; browser shutdown is now bounded at 5 seconds with a best-effort process kill fallback.

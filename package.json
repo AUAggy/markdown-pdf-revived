@@ -383,7 +383,7 @@
   },
   "dependencies": {
     "cheerio": "^1.0.0",
-    "dompurify": "^3.4.10",
+    "dompurify": "^3.4.13",
     "emoji-images": "^0.1.1",
     "gray-matter": "^4.0.3",
     "highlight.js": "^11.11.1",
@@ -403,12 +403,12 @@
   },
   "overrides": {
     "basic-ftp": "5.3.1",
-    "ip-address": "10.2.0",
+    "ip-address": "10.5.0",
     "minimatch@10.2.4": {
-      "brace-expansion": "5.0.6"
+      "brace-expansion": "5.0.9"
     },
-    "undici": "7.27.2",
+    "undici": "7.29.0",
     "uuid": "11.1.1",
-    "ws": "8.20.1"
+    "ws": "8.21.3"
   }
 }
