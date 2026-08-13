@@ -79,11 +79,11 @@ offline capability, and a reduced feature set that works correctly.
   [#199](https://github.com/yzane/vscode-markdown-pdf/issues/199),
   [#167](https://github.com/yzane/vscode-markdown-pdf/issues/167))
 - DOMPurify HTML sanitization: patches CVE-2024-7739
-- Mermaid render wait before PDF capture — diagrams no longer appear as raw text
+- Mermaid render wait before PDF capture, so diagrams no longer appear as raw text
   (closes [#342](https://github.com/yzane/vscode-markdown-pdf/issues/342),
   [#365](https://github.com/yzane/vscode-markdown-pdf/issues/365),
   [#290](https://github.com/yzane/vscode-markdown-pdf/issues/290))
-- Mermaid rendered locally from bundled `mermaid.min.js` — no CDN calls
+- Mermaid rendered locally from bundled `mermaid.min.js`, with no CDN calls
   (closes [#30](https://github.com/yzane/vscode-markdown-pdf/issues/30),
   [#312](https://github.com/yzane/vscode-markdown-pdf/issues/312))
 - TypeScript source with strict mode enabled
