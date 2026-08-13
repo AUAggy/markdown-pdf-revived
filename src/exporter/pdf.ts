@@ -31,6 +31,32 @@ export function cleanupTempDir(tempDir: string | undefined): void {
   }
 }
 
+export interface CloseableBrowser {
+  close(): Promise<void>;
+  process(): { kill(): boolean } | null;
+}
+
+// A wedged renderer can make browser.close() hang forever, which would pin the
+// export progress notification open. Bound the wait, then fall back to killing
+// the process — the same orphan an unbounded hang would leave, minus the hang.
+export async function closeBrowserBounded(browser: CloseableBrowser, timeoutMs: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+  });
+  try {
+    const result = await Promise.race([
+      browser.close().then(() => 'closed' as const, () => 'failed' as const),
+      timedOut,
+    ]);
+    if (result !== 'closed') {
+      browser.process()?.kill();
+    }
+  } catch { /* best effort */ } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function exportPdf(
   data: string,
   filename: string,
@@ -122,7 +148,7 @@ export async function exportPdf(
           showErrorMessage('exportPdf()', error);
         }
       } finally {
-        if (browser) { try { await browser.close(); } catch { /* best effort */ } }
+        if (browser) { await closeBrowserBounded(browser, 5000); }
         cleanupTempDir(tempDir);
       }
     }

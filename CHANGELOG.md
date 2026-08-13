@@ -4,6 +4,12 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- PDF export no longer hangs the progress notification if the browser fails to close after export; browser shutdown is now bounded at 5 seconds with a best-effort process kill fallback.
+
 ## [3.0.0] - 2026-06-13
 
 ### Security
