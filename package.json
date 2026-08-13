@@ -2,7 +2,7 @@
   "name": "markdown-pdf-revived",
   "displayName": "Markdown PDF (Revived)",
   "description": "Markdown to PDF/HTML converter. Local rendering with no external servers.",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "publisher": "AUAggy",
   "author": "AUAggy",
   "icon": "images/icon.png",
