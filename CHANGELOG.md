@@ -15,6 +15,10 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 - PDF export no longer hangs the progress notification if the browser fails to close after export; browser shutdown is now bounded at 5 seconds with a best-effort process kill fallback.
 
+### Changed
+
+- Updated puppeteer-core to the 25.x release line (dependency maintenance). This clears the remaining `npm audit` findings in the browser-download code path, which this extension never invokes — browsers are detected on the system or configured explicitly, never downloaded.
+
 ## [3.0.0] - 2026-06-13
 
 ### Security
