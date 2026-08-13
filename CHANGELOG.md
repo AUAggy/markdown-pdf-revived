@@ -8,16 +8,16 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- Updated DOMPurify to 3.4.13, fixing hook-handling advisories in the sanitizer this extension relies on (GHSA-c2j3-45gr-mqc4, GHSA-cmwh-pvxp-8882, GHSA-55q2-fjhq-7xh7).
-- Refreshed pinned transitive dependency versions that had new advisories published since 3.0.0: brace-expansion 5.0.9, ip-address 10.5.0, undici 7.29.0, ws 8.21.3.
+- Updated DOMPurify to 3.4.13. This fixes three hook-handling advisories in the sanitizer that guards PDF and HTML output (GHSA-c2j3-45gr-mqc4, GHSA-cmwh-pvxp-8882, GHSA-55q2-fjhq-7xh7).
+- Refreshed pinned transitive dependencies with advisories published since 3.0.0: brace-expansion 5.0.9, ip-address 10.5.0, undici 7.29.0, ws 8.21.3.
 
 ### Fixed
 
-- PDF export no longer hangs the progress notification if the browser fails to close after export; browser shutdown is now bounded at 5 seconds with a best-effort process kill fallback.
+- PDF export no longer hangs the progress notification when the browser fails to close. Browser shutdown now times out after 5 seconds and falls back to killing the process.
 
 ### Changed
 
-- Updated puppeteer-core to the 25.x release line (dependency maintenance). This clears the remaining `npm audit` findings in the browser-download code path, which this extension never invokes — browsers are detected on the system or configured explicitly, never downloaded.
+- Updated puppeteer-core from 24.x to 25.x. This is dependency maintenance, not a security fix: the remaining `npm audit` findings were in browser-download code this extension never runs. Browsers are detected on the system or set through `markdown-pdf.executablePath`, never downloaded.
 
 ## [3.0.0] - 2026-06-13
 
