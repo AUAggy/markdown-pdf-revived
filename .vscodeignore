@@ -42,3 +42,4 @@ node_modules/**
 
 # emoji-images: PNG image files (loaded by path at runtime)
 !node_modules/emoji-images/pngs/**
+scripts/**

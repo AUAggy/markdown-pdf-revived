@@ -362,6 +362,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "mocha --require ts-node/register \"src/**/*.test.ts\"",
     "test:integration": "npm run build && node ./test/runTest.js",
+    "posttest:integration": "sh scripts/unregister-vscode-test.sh",
     "test:package": "npm run build && node ./test/package.js",
     "test": "npm run typecheck && npm run test:unit && npm run test:integration"
   },
