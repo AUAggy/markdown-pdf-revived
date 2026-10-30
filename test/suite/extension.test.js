@@ -7,8 +7,27 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const vscode = require('vscode');
 const runNode = promisify(execFile);
+
+const vscode = require('vscode');
+
+// Move focus out of the text editor so activeTextEditor becomes undefined.
+// That is the state the built-in Markdown preview produces, and the only input
+// the export source selection uses, so a webview panel reproduces it without
+// depending on the preview extension being present in the test harness.
+async function focusNonTextEditor() {
+  const panel = vscode.window.createWebviewPanel('markdownPdfFocusProbe', 'Focus probe', vscode.ViewColumn.Active);
+  panel.reveal(vscode.ViewColumn.Active, false);
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline && vscode.window.activeTextEditor) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (vscode.window.activeTextEditor) {
+    panel.dispose();
+    throw new Error('could not move focus out of the text editor');
+  }
+  return panel;
+}
 
 suite('Markdown PDF extension', () => {
   test('activates and registers export commands', async () => {
@@ -29,6 +48,150 @@ suite('Markdown PDF extension', () => {
     assert.ok(commands.includes('extension.markdown-pdf.pdf'));
     assert.ok(commands.includes('extension.markdown-pdf.html'));
     assert.ok(commands.includes('extension.markdown-pdf.all'));
+  });
+
+  test('exports the tracked Markdown document when focus is not in a text editor (preview case)', async function () {
+    this.timeout(45_000);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-preview-focus-'));
+    const markdownPath = path.join(tempDir, 'preview-focus.md');
+    const htmlPath = path.join(tempDir, 'preview-focus.html');
+    const pdfPath = path.join(tempDir, 'preview-focus.pdf');
+    fs.writeFileSync(markdownPath, '# Preview focus export\n\nExported while the preview had focus.');
+
+    // Moving focus into a webview panel makes activeTextEditor undefined, which
+    // is the state the built-in preview produces.
+    let panel;
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const closedBy = Date.now() + 10000;
+      while (Date.now() < closedBy && vscode.workspace.textDocuments.some(entry => entry.languageId === 'markdown')) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      const document = await vscode.workspace.openTextDocument(markdownPath);
+      await vscode.window.showTextDocument(document);
+
+      panel = await focusNonTextEditor();
+      assert.strictEqual(vscode.window.activeTextEditor, undefined, 'focus must leave the text editor');
+      console.log('[probe] target closed?', document.isClosed, 'exists?', fs.existsSync(markdownPath));
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      assert.ok(fs.existsSync(htmlPath), 'HTML export must resolve the source from the tracked document');
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      assert.ok(html.includes('Preview focus export'));
+      assert.ok(html.includes('Exported while the preview had focus.'));
+
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const pdf = fs.readFileSync(pdfPath);
+      assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
+      assert.ok(pdf.length > 0);
+    } finally {
+      panel?.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('warns about an active non-Markdown document instead of exporting another file', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-non-markdown-'));
+    const markdownPath = path.join(tempDir, 'context.md');
+    const textPath = path.join(tempDir, 'context.txt');
+    const htmlPath = path.join(tempDir, 'context.html');
+    fs.writeFileSync(markdownPath, '# Markdown context');
+    fs.writeFileSync(textPath, 'plain text');
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const markdown = await vscode.workspace.openTextDocument(markdownPath);
+      await vscode.window.showTextDocument(markdown);
+      const plain = await vscode.workspace.openTextDocument(textPath);
+      await vscode.window.showTextDocument(plain);
+
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      assert.ok(!fs.existsSync(htmlPath), 'an active non-Markdown document must not trigger an export');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not silently pick a source when two Markdown documents are eligible', async function () {
+    this.timeout(120_000);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-ambiguous-source-'));
+    const firstPath = path.join(tempDir, 'first.md');
+    const secondPath = path.join(tempDir, 'second.md');
+    fs.writeFileSync(firstPath, '# First document');
+    fs.writeFileSync(secondPath, '# Second document');
+    let panel;
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(firstPath));
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(secondPath));
+      panel = await focusNonTextEditor();
+      assert.strictEqual(vscode.window.activeTextEditor, undefined, 'focus must leave the text editor');
+
+      // The source picker opens and is dismissed without choosing anything.
+      const exportRun = vscode.commands.executeCommand('extension.markdown-pdf.html');
+      await new Promise(resolve => setTimeout(resolve, 750));
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+      await exportRun;
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      for (const output of ['first.html', 'second.html']) {
+        assert.ok(!fs.existsSync(path.join(tempDir, output)), `cancelling must not write ${output}`);
+      }
+    } finally {
+      panel?.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('save-triggered export uses the saved document, not the focused one', async function () {
+    this.timeout(120_000);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-save-isolation-'));
+    const savedPath = path.join(tempDir, 'saved.md');
+    const focusedPath = path.join(tempDir, 'focused.md');
+    const configuration = vscode.workspace.getConfiguration('markdown-pdf');
+    await configuration.update('convertOnSave', true, vscode.ConfigurationTarget.Global);
+    await configuration.update('type', ['html'], vscode.ConfigurationTarget.Global);
+
+    try {
+      // Re-activate so the save listener registers with convertOnSave enabled.
+      const extension = vscode.extensions.getExtension('AUAggy.markdown-pdf-revived');
+      assert.ok(extension);
+      await extension.activate();
+
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.writeFileSync(savedPath, '# Saved document\n\nSaved while another file had focus.');
+      fs.writeFileSync(focusedPath, '# Focused document');
+
+      const saved = await vscode.workspace.openTextDocument(savedPath);
+      const focused = await vscode.workspace.openTextDocument(focusedPath);
+      await vscode.window.showTextDocument(focused);
+      assert.strictEqual(vscode.window.activeTextEditor?.document.uri.fsPath, focused.uri.fsPath);
+
+      const edited = new vscode.WorkspaceEdit();
+      edited.insert(saved.uri, new vscode.Position(saved.lineCount, 0), '\nEdited before save.\n');
+      assert.ok(await vscode.workspace.applyEdit(edited), 'the edit must apply');
+      assert.ok(saved.isDirty, 'the document must be dirty before saving');
+      await saved.save();
+
+      const deadline = Date.now() + 60_000;
+      const htmlPath = path.join(tempDir, 'saved.html');
+      while (Date.now() < deadline && !fs.existsSync(htmlPath)) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      assert.ok(fs.existsSync(htmlPath), 'the saved document must be exported');
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      assert.ok(html.includes('Saved document'));
+      assert.ok(!html.includes('Focused document'), 'the focused document must not be exported');
+      assert.ok(!fs.existsSync(path.join(tempDir, 'focused.html')));
+    } finally {
+      await configuration.update('convertOnSave', undefined, vscode.ConfigurationTarget.Global);
+      await configuration.update('type', undefined, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test('exports HTML when the configured browser is missing', async () => {
@@ -103,7 +266,9 @@ suite('Markdown PDF extension', () => {
         timeout: 90000,
       });
       assert.ok(stdout.includes('"diagrams":3'), 'browser must verify the exported HTML assets');
+      console.log('[probe] invoking pdf export');
       await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      console.log('[probe] pdf export returned');
       const pdf = fs.readFileSync(pdfPath);
       assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
       assert.ok(pdf.length > 1000, 'rendered PDF should contain content');
