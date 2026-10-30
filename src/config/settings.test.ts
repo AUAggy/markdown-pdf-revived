@@ -28,6 +28,14 @@ describe('settings manifest', () => {
     assert.deepStrictEqual(settings['markdown-pdf.styles'].default, []);
   });
 
+  it('declares the outline setting as an opt-in resource-scoped boolean', () => {
+    const outline = settings['markdown-pdf.outline'];
+    assert.ok(outline, 'markdown-pdf.outline must be contributed');
+    assert.strictEqual(outline.type, 'boolean');
+    assert.strictEqual(outline.default, false, 'bookmarks must be opt-in');
+    assert.strictEqual(outline.scope, 'resource');
+  });
+
   it('declares every setting that config reads per resource as resource-scoped', () => {
     // Each of these is read with a resource URI so folder settings apply.
     const resourceScoped = [
@@ -42,6 +50,7 @@ describe('settings manifest', () => {
       'markdown-pdf.margin.bottom',
       'markdown-pdf.margin.right',
       'markdown-pdf.margin.left',
+      'markdown-pdf.outline',
     ];
     for (const key of resourceScoped) {
       assert.ok(settings[key], `${key} must be contributed`);

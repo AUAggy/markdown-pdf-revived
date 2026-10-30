@@ -285,6 +285,12 @@
           "description": "pdf only. Print background graphics.",
           "scope": "resource"
         },
+        "markdown-pdf.outline": {
+          "type": "boolean",
+          "default": false,
+          "description": "pdf only. Generate PDF bookmarks (an outline panel) from document headings. Uses the browser's own outline support; bookmark depth follows heading levels and cannot be filtered.",
+          "scope": "resource"
+        },
         "markdown-pdf.orientation": {
           "type": "string",
           "enum": [

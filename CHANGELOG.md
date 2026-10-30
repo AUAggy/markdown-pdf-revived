@@ -23,8 +23,15 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - An unclosed `<!--`, `<?`, or `<![CDATA[` in prose now renders as text. Content after it still parses normally.
 - A `$$` delimiter line with no content on the opening line falls back to inline math. This is unchanged parser behaviour, now covered by tests.
 
+### Added
+
+- Opt-in PDF bookmarks: `markdown-pdf.outline` (default `false`) generates a bookmark panel from document headings. Nesting follows heading levels. It is a browser PDF-writer feature, so there is no depth filter or start level, and bookmark destinations move with page layout.
+
 ### Fixed
 
+- Export from the Markdown preview no longer fails with `No active Editor!`. When focus is outside a text editor, the export resolves the Markdown document you were working on. If several Markdown files are open, it asks which one instead of guessing. Convert-on-save is unaffected: it always exports the file that was saved.
+- `markdown-pdf.styles` is now resource-scoped, so folder-level stylesheets apply in multi-root workspaces. Previously the setting was read as a window setting and folder overrides were ignored.
+- Toggling `markdown-pdf.convertOnSave` now takes effect immediately instead of requiring a window reload.
 - The macOS test cleanup hook no longer fails the run. It previously unregistered the whole `.vscode-test` directory, which `lsregister` rejects, so `npm test` exited non-zero after every successful integration run and could hide real failures in CI.
 
 ## [3.0.1] - 2026-08-13

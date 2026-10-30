@@ -8,6 +8,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const runNode = promisify(execFile);
+const { readPdfOutline, flattenOutline } = require('../pdfOutline');
 
 const vscode = require('vscode');
 
@@ -337,6 +338,50 @@ suite('Markdown PDF extension', () => {
       for (const file of [alphaCss, betaCss, alphaDoc, betaDoc, alphaHtml, betaHtml, path.join(alphaFolder, 'scoped.pdf')]) {
         fs.rmSync(file, { force: true });
       }
+    }
+  });
+
+  test('adds PDF bookmarks only when markdown-pdf.outline is enabled', async function () {
+    this.timeout(120_000);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-outline-'));
+    const markdownPath = path.join(tempDir, 'outline.md');
+    const pdfPath = path.join(tempDir, 'outline.pdf');
+    const htmlPath = path.join(tempDir, 'outline.html');
+    const configuration = vscode.workspace.getConfiguration('markdown-pdf');
+    fs.writeFileSync(markdownPath, [
+      '# One', 'a', '## One A', 'b', '### One A i', 'c', '## One B', 'd', '# Two', 'e',
+    ].join('\n\n'));
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(markdownPath));
+
+      // Default is off: no outline, and existing output is unchanged.
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      assert.strictEqual(readPdfOutline(pdfPath), null, 'bookmarks must be off by default');
+
+      await configuration.update('outline', true, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const outline = readPdfOutline(pdfPath);
+      assert.ok(outline, 'enabling the setting must produce an outline');
+      assert.deepStrictEqual(flattenOutline(outline), [
+        { title: 'One', depth: 0, hasDestination: true },
+        { title: 'One A', depth: 1, hasDestination: true },
+        { title: 'One A i', depth: 2, hasDestination: true },
+        { title: 'One B', depth: 1, hasDestination: true },
+        { title: 'Two', depth: 0, hasDestination: true },
+      ], 'bookmark titles, nesting and destinations must match the headings');
+
+      // HTML export is unaffected by a PDF-only option.
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      for (const heading of ['One A i', 'One B', 'Two']) {
+        assert.ok(html.includes(heading), `HTML export must still contain ${heading}`);
+      }
+    } finally {
+      await configuration.update('outline', undefined, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
