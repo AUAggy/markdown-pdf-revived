@@ -12,6 +12,22 @@ const { readPdfOutline, flattenOutline } = require('../pdfOutline');
 
 const vscode = require('vscode');
 
+// Windows keeps handles on freshly closed files and watched directories, so a
+// single rmSync can fail with EBUSY/EPERM. Retry briefly, then leave the
+// temporary directory to the OS: cleanup must not fail an otherwise passing test.
+async function removeTempDir(dir) {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY', 'EACCES'].includes(error.code)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+  console.warn(`could not remove temporary directory: ${dir}`);
+}
+
 // Move focus out of the text editor so activeTextEditor becomes undefined.
 // That is the state the built-in Markdown preview produces, and the only input
 // the export source selection uses, so a webview panel reproduces it without
@@ -86,7 +102,7 @@ suite('Markdown PDF extension', () => {
     } finally {
       panel?.dispose();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -109,7 +125,7 @@ suite('Markdown PDF extension', () => {
       assert.ok(!fs.existsSync(htmlPath), 'an active non-Markdown document must not trigger an export');
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -142,7 +158,7 @@ suite('Markdown PDF extension', () => {
     } finally {
       panel?.dispose();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -193,7 +209,7 @@ suite('Markdown PDF extension', () => {
       await configuration.update('convertOnSave', undefined, vscode.ConfigurationTarget.Global);
       await configuration.update('type', undefined, vscode.ConfigurationTarget.Global);
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -221,7 +237,7 @@ suite('Markdown PDF extension', () => {
       assert.ok(html.includes('Exported without Chromium.'));
     } finally {
       await configuration.update('executablePath', undefined, vscode.ConfigurationTarget.Global);
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -240,7 +256,7 @@ suite('Markdown PDF extension', () => {
       assert.ok(fs.existsSync(pdfPath), 'PDF output should be written');
       assert.ok(fs.statSync(pdfPath).size > 0, 'PDF output should not be empty');
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -275,7 +291,7 @@ suite('Markdown PDF extension', () => {
       assert.ok(pdf.length > 1000, 'rendered PDF should contain content');
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -336,7 +352,7 @@ suite('Markdown PDF extension', () => {
       await betaConfig.update('displayHeaderFooter', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       for (const file of [alphaCss, betaCss, alphaDoc, betaDoc, alphaHtml, betaHtml, path.join(alphaFolder, 'scoped.pdf')]) {
-        fs.rmSync(file, { force: true });
+        try { fs.rmSync(file, { force: true }); } catch { /* Windows may still hold a handle */ }
       }
     }
   });
@@ -381,7 +397,7 @@ suite('Markdown PDF extension', () => {
     } finally {
       await configuration.update('outline', undefined, vscode.ConfigurationTarget.Global);
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 
@@ -433,7 +449,7 @@ suite('Markdown PDF extension', () => {
     } finally {
       await configuration.update('styles', undefined, vscode.ConfigurationTarget.Global);
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      await removeTempDir(tempDir);
     }
   });
 });
