@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { runTests, runVSCodeCommand } = require('@vscode/test-electron');
+const workspaceFixture = require('./workspaceFixture');
 
 const root = path.resolve(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -63,7 +64,16 @@ async function main() {
   for (const entry of requiredEntries) {
     assert.ok(manifest.includes(entry), `VSIX manifest must include ${entry}`);
   }
-  assert.ok(manifest.some((entry) => entry.startsWith('node_modules/katex/dist/fonts/')));
+  const katexCssPath = 'node_modules/katex/dist/katex.min.css';
+  const katexCss = fs.readFileSync(path.join(root, katexCssPath), 'utf8');
+  const fontUrls = [...katexCss.matchAll(/url\(([^)]+)\)/g)].map(match => match[1]);
+  assert.ok(fontUrls.length > 0, 'KaTeX CSS must reference fonts');
+  for (const url of fontUrls) {
+    assert.ok(url.startsWith('fonts/'), `unexpected non-local KaTeX font URL: ${url}`);
+    const entry = path.posix.join(path.posix.dirname(katexCssPath), url);
+    assert.ok(manifest.includes(entry), `VSIX must include referenced KaTeX font: ${entry}`);
+    assert.ok(fs.statSync(path.join(root, entry)).size > 0, `KaTeX font must not be empty: ${entry}`);
+  }
   assert.ok(manifest.some((entry) => entry.startsWith('node_modules/highlight.js/styles/')));
   assert.ok(manifest.some((entry) => entry.startsWith('node_modules/emoji-images/pngs/')));
 
@@ -95,12 +105,18 @@ async function main() {
   fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2) + '\n');
 
   await runVSCodeCommand(['--install-extension', vsixPath, '--force'], { version: vscodeVersion });
-  await runTests({
-    version: vscodeVersion,
-    extensionDevelopmentPath: path.join(root, 'test', 'package-harness'),
-    extensionTestsPath: path.join(root, 'test', 'suite', 'index'),
-    extensionTestsEnv: { MARKDOWN_PDF_PACKAGE_TEST: '1' },
-  });
+  const fixture = workspaceFixture.create();
+  try {
+    await runTests({
+      version: vscodeVersion,
+      extensionDevelopmentPath: path.join(root, 'test', 'package-harness'),
+      extensionTestsPath: path.join(root, 'test', 'suite', 'index'),
+      launchArgs: [fixture.workspaceFile],
+      extensionTestsEnv: { MARKDOWN_PDF_PACKAGE_TEST: '1', ...fixture.env },
+    });
+  } finally {
+    fixture.cleanup();
+  }
 
   console.log(
     `Package checks passed (${evidence.bytes} byte VSIX, ${evidence.files} files, sha256 ${evidence.sha256}).`

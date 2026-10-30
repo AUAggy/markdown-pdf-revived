@@ -132,6 +132,60 @@ describe('sanitizeContent', () => {
     assert.ok(result.includes('<math>'));
   });
 
+  it('blocks event handlers and executable URLs across HTML, SVG and MathML reparsing', () => {
+    // Exercise our string-output configuration, not DOMPurify's unused IN_PLACE,
+    // SAFE_FOR_TEMPLATES or XHTML modes from the package advisories.
+    const result = sanitizeContent(
+      '<div><template><img src="x" onerror="alert(1)"></template>' +
+      '<svg onload="alert(1)"><a xlink:href="javascript:alert(1)">bad</a>' +
+      '<animate attributeName="href" values="javascript:alert(1)"></animate></svg>' +
+      '<math><mtext><a href="jav&#x61;script:alert(1)" onclick="alert(1)">bad</a></mtext></math>' +
+      '<a href="https://example.invalid/safe">safe link</a></div>'
+    );
+    assert.ok(result !== null);
+    // Reparse what a browser consumes, including detached template fragments.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM(result);
+    try {
+      interface Element {
+        getAttributeNames(): string[];
+        getAttribute(name: string): string | null;
+        tagName: string;
+        content?: Root;
+      }
+      interface Root { querySelectorAll(selector: string): ArrayLike<Element>; }
+      function check(root: Root): void {
+        for (const element of Array.from(root.querySelectorAll('*'))) {
+          for (const name of element.getAttributeNames()) {
+            assert.ok(!/^on/i.test(name), `event attribute survived: ${name}`);
+            if (['href', 'src', 'xlink:href'].includes(name)) {
+              assert.ok(!/^\s*javascript:/i.test(element.getAttribute(name) ?? ''), 'executable URL survived');
+            }
+          }
+          if (element.tagName === 'TEMPLATE' && element.content) { check(element.content); }
+        }
+      }
+      check(dom.window.document);
+      assert.ok(!dom.window.document.querySelector('script, iframe, object, embed, animate'));
+      assert.ok(dom.window.document.querySelector('a[href="https://example.invalid/safe"]'));
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it('preserves SVG drawing, MathML structure and inline styling after the DOMPurify patch', () => {
+    const result = sanitizeContent(
+      '<svg viewBox="0 0 10 10"><path d="M0 0L10 10" stroke="black"></path></svg>' +
+      '<math><mfrac><mi>x</mi><msup><mi>y</mi><mn>2</mn></msup></mfrac></math>' +
+      '<p style="color: red" data-callout="note">visible</p>'
+    );
+    assert.ok(result !== null);
+    for (const expected of ['viewBox="0 0 10 10"', 'stroke="black"', '<mfrac>', '<msup>', 'style="color: red"', 'data-callout="note"']) {
+      assert.ok(result.includes(expected), `supported markup lost: ${expected}`);
+    }
+  });
+
   // Regression: inline <title> in prose triggers HTML5 RCDATA parsing mode in jsdom,
   // causing all subsequent content to be swallowed as the title's raw text and then
   // silently dropped by DOMPurify — truncating the PDF output.

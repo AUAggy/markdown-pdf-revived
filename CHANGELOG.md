@@ -4,6 +4,36 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- Updated DOMPurify to 3.4.17, closing the remaining sanitizer advisories. This extension uses DOMPurify only in its default string-output mode, so the reported modes (`IN_PLACE`, `SAFE_FOR_TEMPLATES`, XHTML parsing) were not reachable here. No bypass of the export sanitizer was found.
+- Updated KaTeX to 0.18.2 (GHSA-238p-pmpm-9mq7). KaTeX read inherited `Object.prototype` properties as renderer options, so a pre-existing prototype pollution elsewhere could have enabled a `trust` setting this extension never opts into. Rendering now ignores inherited settings, and sanitization still runs on the output.
+- Updated Mermaid to 12.2.0, the first release line that accepts the patched KaTeX.
+- Updated `markdown-it` to 14.3.3 and `js-yaml` to 3.15.2, closing parser advisories for inline HTML, multi-line link reference definitions, and YAML merge keys.
+- Updated Puppeteer to 25.13.0, which moves the bundled BiDi layer to a patched validation library. Browsers are still detected on the system or set through `markdown-pdf.executablePath`, never downloaded.
+- Raised the pinned versions of `brace-expansion`, `source-map-js`, and `undici` past their advisories. These are dependency findings; none of the affected code paths is reachable from export.
+- `npm audit --omit=dev` reports zero findings again.
+
+### Changed
+
+- Math and diagram rendering was re-verified in a real browser after the KaTeX and Mermaid upgrades. Packaged assets render offline with bundled fonts, Mermaid keeps its `strict` security level, and no executable links or event handlers are emitted.
+- Mermaid 12 changed its default diagram styling: nodes are drawn slightly larger and with shadows. Documents with diagrams may paginate differently. Math rendering is visually unchanged.
+- An unclosed `<!--`, `<?`, or `<![CDATA[` in prose now renders as text. Content after it still parses normally.
+- A `$$` delimiter line with no content on the opening line falls back to inline math. This is unchanged parser behaviour, now covered by tests.
+
+### Added
+
+- Opt-in PDF bookmarks: `markdown-pdf.outline` (default `false`) generates a bookmark panel from document headings. Nesting follows heading levels. It is a browser PDF-writer feature, so there is no depth filter or start level, and bookmark destinations move with page layout.
+
+### Fixed
+
+- Export from the Markdown preview no longer fails with `No active Editor!`. When focus is outside a text editor, the export resolves the Markdown document you were working on. If several Markdown files are open, it asks which one instead of guessing. Convert-on-save is unaffected: it always exports the file that was saved.
+- `markdown-pdf.styles` is now resource-scoped, so folder-level stylesheets apply in multi-root workspaces. Previously the setting was read as a window setting and folder overrides were ignored.
+- Toggling `markdown-pdf.convertOnSave` now takes effect immediately instead of requiring a window reload.
+- The macOS test cleanup hook no longer fails the run. It previously unregistered the whole `.vscode-test` directory, which `lsregister` rejects, so `npm test` exited non-zero after every successful integration run and could hide real failures in CI.
+
 ## [3.0.1] - 2026-08-13
 
 ### Security

@@ -128,6 +128,8 @@ export async function exportPdf(
             headerTemplate: headerFooterStyle + transformTemplate(config.headerTemplate(uri)),
             footerTemplate: headerFooterStyle + transformTemplate(config.footerTemplate(uri)),
             printBackground: config.printBackground(uri),
+            // Opt-in PDF bookmarks from headings; the browser builds the outline.
+            outline: config.outline(uri),
             landscape: config.orientation(uri) === 'landscape',
             format: config.format(uri) as 'A4',
             margin: { top: margin.top || undefined, right: margin.right || undefined, bottom: margin.bottom || undefined, left: margin.left || undefined },

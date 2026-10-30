@@ -5,11 +5,32 @@ import { convertMarkdownToHtml } from './converter/markdown';
 import { sanitizeContent } from './converter/sanitize';
 import { makeHtml } from './template/page';
 import { exportPdf } from './exporter/pdf';
+import { selectExportSource, type SourceSelection } from './exporter/source';
 import { showErrorMessage } from './utils/logger';
 import { isExistsPath } from './utils/file';
 import type { OptionType, ExportType } from './types';
 
 const SUPPORTED_FORMATS: ExportType[] = ['html', 'pdf'];
+
+// Bounded memory of recently used Markdown documents, most recent first. This
+// is what makes export work while focus sits in a preview or another non-text
+// view; it deliberately holds no assumption about which document is previewed.
+const MAX_TRACKED_DOCUMENTS = 10;
+const trackedDocuments: vscode.TextDocument[] = [];
+
+function forgetTrackedDocument(document: vscode.TextDocument): void {
+  const key = document.uri.toString();
+  for (let index = trackedDocuments.length - 1; index >= 0; index--) {
+    if (trackedDocuments[index].uri.toString() === key) trackedDocuments.splice(index, 1);
+  }
+}
+
+function rememberDocument(document: vscode.TextDocument): void {
+  if (document.languageId !== 'markdown') return;
+  forgetTrackedDocument(document);
+  trackedDocuments.unshift(document);
+  if (trackedDocuments.length > MAX_TRACKED_DOCUMENTS) trackedDocuments.length = MAX_TRACKED_DOCUMENTS;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   const commands = [
@@ -20,29 +41,73 @@ export function activate(context: vscode.ExtensionContext): void {
   ];
   commands.forEach(cmd => context.subscriptions.push(cmd));
 
-  if (config.convertOnSave()) {
-    context.subscriptions.push(
-      vscode.workspace.onDidSaveTextDocument(() => markdownPdfOnSave())
-    );
-  }
+  // Seed with documents restored from the previous session, then keep the list
+  // current. Everything is disposed with the extension context.
+  vscode.workspace.textDocuments.forEach(rememberDocument);
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument(rememberDocument),
+    vscode.window.onDidChangeActiveTextEditor(editor => {
+      if (editor) rememberDocument(editor.document);
+    }),
+    vscode.workspace.onDidCloseTextDocument(forgetTrackedDocument)
+  );
+
+  // Register unconditionally and check the setting per save: toggling
+  // markdown-pdf.convertOnSave then works without reloading the window.
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument(document => markdownPdfOnSave(document))
+  );
 }
 
 export function deactivate(): void {
   // nothing to clean up
 }
 
-async function markdownPdf(optionType: OptionType): Promise<void> {
-  try {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) { vscode.window.showWarningMessage('No active Editor!'); return; }
-    if (editor.document.languageId !== 'markdown') { vscode.window.showWarningMessage('It is not a markdown mode!'); return; }
+async function chooseSource<D extends vscode.TextDocument>(
+  selection: SourceSelection<D>
+): Promise<vscode.TextDocument | undefined> {
+  switch (selection.kind) {
+    case 'single':
+      return selection.document;
+    case 'non-markdown':
+      vscode.window.showWarningMessage('It is not a markdown mode!');
+      return undefined;
+    case 'unsaved':
+      vscode.window.showWarningMessage('Please save the file!');
+      return undefined;
+    case 'none':
+      vscode.window.showWarningMessage('No active Editor!');
+      return undefined;
+    case 'ambiguous': {
+      const picked = await vscode.window.showQuickPick(
+        selection.candidates.map(document => ({
+          label: vscode.workspace.asRelativePath(document.uri),
+          document,
+        })),
+        { placeHolder: 'Select the Markdown file to export' }
+      );
+      // Cancelled: write nothing.
+      return picked?.document;
+    }
+  }
+}
 
-    const uri = editor.document.uri;
+async function markdownPdf(optionType: OptionType, source?: vscode.TextDocument): Promise<void> {
+  try {
+    // Convert-on-save passes its document explicitly and never reaches the
+    // interactive selection path.
+    const document = source ?? await chooseSource(selectExportSource({
+      activeDocument: vscode.window.activeTextEditor?.document,
+      tracked: trackedDocuments,
+    }));
+    if (!document) return;
+
+    const uri = document.uri;
     const mdfilename = uri.fsPath;
     const ext = path.extname(mdfilename);
 
     if (!isExistsPath(mdfilename)) {
-      vscode.window.showWarningMessage(editor.document.isUntitled ? 'Please save the file!' : 'File name does not get!');
+      vscode.window.showWarningMessage(document.isUntitled ? 'Please save the file!' : 'File name does not get!');
       return;
     }
 
@@ -64,9 +129,11 @@ async function markdownPdf(optionType: OptionType): Promise<void> {
       return;
     }
 
+    // Read the text once so every requested format exports the same source.
+    const text = document.getText();
+
     for (const type of types) {
       const outputFilename = mdfilename.replace(ext, '.' + type);
-      const text = editor.document.getText();
       const result = convertMarkdownToHtml(mdfilename, type, text);
       if (!result) return;
       const sanitized = sanitizeContent(result.html);
@@ -83,21 +150,22 @@ async function markdownPdf(optionType: OptionType): Promise<void> {
   }
 }
 
-function markdownPdfOnSave(): void {
+function markdownPdfOnSave(document: vscode.TextDocument): void {
   try {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'markdown') return;
-    if (!isMarkdownPdfOnSaveExclude(editor)) {
-      void markdownPdf('settings');
+    if (document.languageId !== 'markdown') return;
+    if (!config.convertOnSave()) return;
+    rememberDocument(document);
+    if (!isMarkdownPdfOnSaveExclude(document)) {
+      void markdownPdf('settings', document);
     }
   } catch (error) {
     showErrorMessage('markdownPdfOnSave()', error);
   }
 }
 
-function isMarkdownPdfOnSaveExclude(editor: vscode.TextEditor): boolean {
+function isMarkdownPdfOnSaveExclude(document: vscode.TextDocument): boolean {
   try {
-    const filename = path.basename(editor.document.fileName);
+    const filename = path.basename(document.fileName);
     const patterns = config.convertOnSaveExclude();
     return patterns.some(pattern => new RegExp(pattern).test(filename));
   } catch (error) {
