@@ -40,11 +40,12 @@ interface ChildResult {
   stderr: string;
 }
 
-function runBoundedChild(name: string, script: string, moduleDir: string, env?: Record<string, string>): ChildResult {
+function runBoundedChild(name: string, script: string, moduleDir: string, input?: string): ChildResult {
   const res = spawnSync(process.execPath, ['-e', script, moduleDir], {
     timeout: HARD_TIMEOUT_MS,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    // stdin avoids platform-specific environment/argument size limits.
+    input,
   });
   return {
     name,
@@ -52,7 +53,7 @@ function runBoundedChild(name: string, script: string, moduleDir: string, env?: 
     signal: res.signal,
     timedOut: !!res.error && (res.error as NodeJS.ErrnoException).code === 'ETIMEDOUT',
     stdout: (res.stdout || '').trim(),
-    stderr: (res.stderr || '').trim(),
+    stderr: (res.stderr || res.error?.message || '').trim(),
   };
 }
 
@@ -71,7 +72,7 @@ const MARKDOWN_IT_RENDER = `
 const path = require('path');
 const MarkdownIt = require(path.join(process.argv[1]));
 const md = new MarkdownIt({ html: true });
-const src = process.env.POC_SRC;
+const src = require('fs').readFileSync(0, 'utf8');
 const t0 = process.hrtime.bigint();
 md.render(src);
 console.log('rendered', src.length, 'chars in', (Number(process.hrtime.bigint() - t0) / 1e6).toFixed(0), 'ms');
@@ -87,7 +88,7 @@ describe('adversarial markdown-it inputs complete within hard bounds', () => {
       'inline-html-quadratic',
       MARKDOWN_IT_RENDER,
       markdownItDir,
-      { POC_SRC: src }
+      src
     ));
   }).timeout(HARD_TIMEOUT_MS + 10000);
 
@@ -98,7 +99,7 @@ describe('adversarial markdown-it inputs complete within hard bounds', () => {
       'refdef-quadratic',
       MARKDOWN_IT_RENDER,
       markdownItDir,
-      { POC_SRC: src }
+      src
     ));
   }).timeout(HARD_TIMEOUT_MS + 10000);
 });
