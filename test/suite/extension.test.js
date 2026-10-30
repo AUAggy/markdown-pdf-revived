@@ -73,7 +73,6 @@ suite('Markdown PDF extension', () => {
 
       panel = await focusNonTextEditor();
       assert.strictEqual(vscode.window.activeTextEditor, undefined, 'focus must leave the text editor');
-      console.log('[probe] target closed?', document.isClosed, 'exists?', fs.existsSync(markdownPath));
       await vscode.commands.executeCommand('extension.markdown-pdf.html');
       assert.ok(fs.existsSync(htmlPath), 'HTML export must resolve the source from the tracked document');
       const html = fs.readFileSync(htmlPath, 'utf8');
@@ -177,14 +176,17 @@ suite('Markdown PDF extension', () => {
       assert.ok(saved.isDirty, 'the document must be dirty before saving');
       await saved.save();
 
-      const deadline = Date.now() + 60_000;
+      // The export creates the output file before writing its content, so poll
+      // for the content rather than for existence.
       const htmlPath = path.join(tempDir, 'saved.html');
-      while (Date.now() < deadline && !fs.existsSync(htmlPath)) {
+      const deadline = Date.now() + 60_000;
+      let html = '';
+      while (Date.now() < deadline) {
+        try { html = fs.readFileSync(htmlPath, 'utf8'); } catch { html = ''; }
+        if (html.includes('Saved document')) break;
         await new Promise(resolve => setTimeout(resolve, 250));
       }
-      assert.ok(fs.existsSync(htmlPath), 'the saved document must be exported');
-      const html = fs.readFileSync(htmlPath, 'utf8');
-      assert.ok(html.includes('Saved document'));
+      assert.ok(html.includes('Saved document'), 'the saved document must be exported');
       assert.ok(!html.includes('Focused document'), 'the focused document must not be exported');
       assert.ok(!fs.existsSync(path.join(tempDir, 'focused.html')));
     } finally {
@@ -267,9 +269,7 @@ suite('Markdown PDF extension', () => {
         timeout: 90000,
       });
       assert.ok(stdout.includes('"diagrams":3'), 'browser must verify the exported HTML assets');
-      console.log('[probe] invoking pdf export');
       await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
-      console.log('[probe] pdf export returned');
       const pdf = fs.readFileSync(pdfPath);
       assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
       assert.ok(pdf.length > 1000, 'rendered PDF should contain content');
