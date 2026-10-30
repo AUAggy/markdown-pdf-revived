@@ -5,7 +5,10 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const vscode = require('vscode');
+const runNode = promisify(execFile);
 
 suite('Markdown PDF extension', () => {
   test('activates and registers export commands', async () => {
@@ -71,6 +74,41 @@ suite('Markdown PDF extension', () => {
       assert.ok(fs.existsSync(pdfPath), 'PDF output should be written');
       assert.ok(fs.statSync(pdfPath).size > 0, 'PDF output should not be empty');
     } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('renders packaged math and Mermaid assets offline in HTML and PDF exports', async function () {
+    this.timeout(120_000);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-rendering-'));
+    const markdownPath = path.join(tempDir, 'rendering.md');
+    const htmlPath = path.join(tempDir, 'rendering.html');
+    const pdfPath = path.join(tempDir, 'rendering.pdf');
+    fs.writeFileSync(markdownPath, [
+      '# Rendering regression',
+      '$$E = mc^2$$',
+      '$$\\frac{a}{b} + \\sqrt{x}$$',
+      '$$\\sum_{i=1}^{n} i$$',
+      '$$\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}$$',
+      '```mermaid\ngraph TD; A[Start]-->B{Decision}; B-->|yes|C[Finish]; B-->|no|A;\n```',
+      '```mermaid\nsequenceDiagram\n Alice->>Bob: Hello\n Bob-->>Alice: Hi\n```',
+      '```mermaid\nflowchart LR\n A["$$x^2 + y^2$$"] --> B["$$z^2$$"]\n```',
+    ].join('\n\n'));
+    try {
+      const document = await vscode.workspace.openTextDocument(markdownPath);
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      const { stdout } = await runNode(process.execPath, [path.resolve(__dirname, '..', 'renderHtml.js'), htmlPath], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        timeout: 90000,
+      });
+      assert.ok(stdout.includes('"diagrams":3'), 'browser must verify the exported HTML assets');
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const pdf = fs.readFileSync(pdfPath);
+      assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
+      assert.ok(pdf.length > 1000, 'rendered PDF should contain content');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });

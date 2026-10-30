@@ -63,7 +63,16 @@ async function main() {
   for (const entry of requiredEntries) {
     assert.ok(manifest.includes(entry), `VSIX manifest must include ${entry}`);
   }
-  assert.ok(manifest.some((entry) => entry.startsWith('node_modules/katex/dist/fonts/')));
+  const katexCssPath = 'node_modules/katex/dist/katex.min.css';
+  const katexCss = fs.readFileSync(path.join(root, katexCssPath), 'utf8');
+  const fontUrls = [...katexCss.matchAll(/url\(([^)]+)\)/g)].map(match => match[1]);
+  assert.ok(fontUrls.length > 0, 'KaTeX CSS must reference fonts');
+  for (const url of fontUrls) {
+    assert.ok(url.startsWith('fonts/'), `unexpected non-local KaTeX font URL: ${url}`);
+    const entry = path.posix.join(path.posix.dirname(katexCssPath), url);
+    assert.ok(manifest.includes(entry), `VSIX must include referenced KaTeX font: ${entry}`);
+    assert.ok(fs.statSync(path.join(root, entry)).size > 0, `KaTeX font must not be empty: ${entry}`);
+  }
   assert.ok(manifest.some((entry) => entry.startsWith('node_modules/highlight.js/styles/')));
   assert.ok(manifest.some((entry) => entry.startsWith('node_modules/emoji-images/pngs/')));
 
