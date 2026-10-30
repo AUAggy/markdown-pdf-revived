@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { runTests, runVSCodeCommand } = require('@vscode/test-electron');
+const workspaceFixture = require('./workspaceFixture');
 
 const root = path.resolve(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -104,12 +105,18 @@ async function main() {
   fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2) + '\n');
 
   await runVSCodeCommand(['--install-extension', vsixPath, '--force'], { version: vscodeVersion });
-  await runTests({
-    version: vscodeVersion,
-    extensionDevelopmentPath: path.join(root, 'test', 'package-harness'),
-    extensionTestsPath: path.join(root, 'test', 'suite', 'index'),
-    extensionTestsEnv: { MARKDOWN_PDF_PACKAGE_TEST: '1' },
-  });
+  const fixture = workspaceFixture.create();
+  try {
+    await runTests({
+      version: vscodeVersion,
+      extensionDevelopmentPath: path.join(root, 'test', 'package-harness'),
+      extensionTestsPath: path.join(root, 'test', 'suite', 'index'),
+      launchArgs: [fixture.workspaceFile],
+      extensionTestsEnv: { MARKDOWN_PDF_PACKAGE_TEST: '1', ...fixture.env },
+    });
+  } finally {
+    fixture.cleanup();
+  }
 
   console.log(
     `Package checks passed (${evidence.bytes} byte VSIX, ${evidence.files} files, sha256 ${evidence.sha256}).`

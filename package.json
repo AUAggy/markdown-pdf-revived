@@ -132,6 +132,7 @@
         },
         "markdown-pdf.styles": {
           "type": "array",
+          "scope": "resource",
           "default": [],
           "items": {
             "type": "string"
