@@ -278,6 +278,68 @@ suite('Markdown PDF extension', () => {
     }
   });
 
+  test('applies folder-scoped stylesheets to each workspace folder separately', async function () {
+    this.timeout(120_000);
+    const folders = (process.env.MARKDOWN_PDF_TEST_FOLDERS || '').split(path.delimiter).filter(Boolean);
+    if (folders.length < 2) {
+      throw new Error('multi-root workspace fixture missing; set MARKDOWN_PDF_TEST_FOLDERS');
+    }
+    const [alphaFolder, betaFolder] = folders;
+    const alphaCss = path.join(alphaFolder, 'alpha.css');
+    const betaCss = path.join(betaFolder, 'beta.css');
+    const alphaDoc = path.join(alphaFolder, 'scoped.md');
+    const betaDoc = path.join(betaFolder, 'scoped.md');
+    const alphaHtml = path.join(alphaFolder, 'scoped.html');
+    const betaHtml = path.join(betaFolder, 'scoped.html');
+
+    fs.writeFileSync(alphaCss, '.folder-marker-alpha { color: rgb(1, 2, 3); }');
+    fs.writeFileSync(betaCss, '.folder-marker-beta { color: rgb(4, 5, 6); }');
+    fs.writeFileSync(alphaDoc, '# Alpha folder document');
+    fs.writeFileSync(betaDoc, '# Beta folder document');
+
+    const alphaConfig = vscode.workspace.getConfiguration('markdown-pdf', vscode.Uri.file(alphaDoc));
+    const betaConfig = vscode.workspace.getConfiguration('markdown-pdf', vscode.Uri.file(betaDoc));
+
+    try {
+      await alphaConfig.update('styles', ['alpha.css'], vscode.ConfigurationTarget.WorkspaceFolder);
+      await betaConfig.update('styles', ['beta.css'], vscode.ConfigurationTarget.WorkspaceFolder);
+      await alphaConfig.update('displayHeaderFooter', true, vscode.ConfigurationTarget.WorkspaceFolder);
+      await betaConfig.update('displayHeaderFooter', true, vscode.ConfigurationTarget.WorkspaceFolder);
+
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(alphaDoc));
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(betaDoc));
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+
+      const alpha = fs.readFileSync(alphaHtml, 'utf8');
+      const beta = fs.readFileSync(betaHtml, 'utf8');
+      assert.ok(alpha.includes('Alpha folder document'));
+      assert.ok(beta.includes('Beta folder document'));
+      assert.ok(alpha.includes('alpha.css'), 'folder A must use its own stylesheet');
+      assert.ok(beta.includes('beta.css'), 'folder B must use its own stylesheet');
+      assert.ok(!alpha.includes('beta.css'), 'folder A must not inherit folder B styles');
+      assert.ok(!beta.includes('alpha.css'), 'folder B must not inherit folder A styles');
+
+      // Header/footer CSS uses the same resource-aware accessor; PDF export in
+      // each folder must succeed with displayHeaderFooter enabled.
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(alphaDoc));
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const alphaPdf = path.join(alphaFolder, 'scoped.pdf');
+      assert.ok(fs.existsSync(alphaPdf));
+      assert.strictEqual(fs.readFileSync(alphaPdf).subarray(0, 5).toString(), '%PDF-');
+    } finally {
+      await alphaConfig.update('styles', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      await betaConfig.update('styles', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      await alphaConfig.update('displayHeaderFooter', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      await betaConfig.update('displayHeaderFooter', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      for (const file of [alphaCss, betaCss, alphaDoc, betaDoc, alphaHtml, betaHtml, path.join(alphaFolder, 'scoped.pdf')]) {
+        fs.rmSync(file, { force: true });
+      }
+    }
+  });
+
   test('blocks inline style network access while allowing a local stylesheet', async function () {
     this.timeout(120_000);
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-pdf-style-security-'));
