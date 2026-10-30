@@ -142,6 +142,24 @@ Enabling this setting lets Markdown documents reference files outside the truste
 | `markdown-pdf.margin.right` | `"2.5cm"` | Right margin. Units: mm, cm, in, px. |
 | `markdown-pdf.margin.left` | `"2.5cm"` | Left margin. Units: mm, cm, in, px. |
 | `markdown-pdf.timeout` | `60000` | Timeout in milliseconds for PDF export. Increase for large documents or slow machines. |
+| `markdown-pdf.outline` | `false` | Generate PDF bookmarks from document headings. See below. |
+
+#### PDF bookmarks
+
+`markdown-pdf.outline` adds a bookmark panel (PDF outline) built from your headings, so readers can jump between sections in Acrobat, Preview, or a browser PDF viewer. It is off by default.
+
+```json
+{
+  "markdown-pdf.outline": true
+}
+```
+
+Bookmarks follow heading levels (`#` to `######`) and mirror the nesting. Two things to know before enabling it:
+
+- The feature is provided by the browser's PDF writer, so there is no depth limit, filtering, or start-level setting. Every heading becomes a bookmark.
+- Bookmark targets depend on page layout. Changing `format`, `margin`, or `orientation` moves the destinations with the content.
+
+HTML export ignores this setting.
 
 Header and footer templates support these tokens:
 
