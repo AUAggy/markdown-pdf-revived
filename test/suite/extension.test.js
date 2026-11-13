@@ -46,6 +46,35 @@ async function focusNonTextEditor() {
   return panel;
 }
 
+// The export creates the output file before writing its content, so poll for
+// a complete document (leading %PDF-, trailing %%EOF) rather than for existence.
+async function waitForSettledPdf(pdfPath, deadlineMs) {
+  const deadline = Date.now() + deadlineMs;
+  let bytes = Buffer.alloc(0);
+  while (Date.now() < deadline) {
+    try {
+      bytes = fs.readFileSync(pdfPath);
+      if (bytes.subarray(0, 5).toString() === '%PDF-' && bytes.toString('latin1').includes('%%EOF')) return bytes;
+    } catch { /* not written yet */ }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return bytes;
+}
+
+async function waitForFileContent(filePath, predicate, deadlineMs) {
+  const deadline = Date.now() + deadlineMs;
+  let content = '';
+  while (Date.now() < deadline) {
+    try { content = fs.readFileSync(filePath, 'utf8'); } catch { content = ''; }
+    if (predicate(content)) return content;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return content;
+}
+
+const countImageObjects = (pdfBytes) =>
+  (pdfBytes.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length;
+
 suite('Markdown PDF extension', () => {
   test('activates and registers export commands', async () => {
     const extension = vscode.extensions.all.find(
@@ -257,6 +286,93 @@ suite('Markdown PDF extension', () => {
       assert.ok(fs.statSync(pdfPath).size > 0, 'PDF output should not be empty');
     } finally {
       await removeTempDir(tempDir);
+    }
+  });
+
+  // Chromium 157 print-to-PDF findings (verified by pixel-dumping rendered pages
+  // during implementation of the local-image fix; see
+  // plans/chromium-157-print-to-pdf-findings.md §10.3):
+  //
+  // 1. A src-less <img> (how blocked sources are dropped, plan L9) is printed
+  //    as the 14x16 torn-page placeholder bitmap — one shared XObject, drawn
+  //    once per dropped image. The /Width 14 tripwire therefore only holds for
+  //    documents with NO blocked images: that is local-images-resolvable.md.
+  // 2. SVG <img> sources render correctly but as VECTOR paths, so they never
+  //    appear as /Subtype /Image and cannot be counted with the raster
+  //    assertions below. PNG and data-URI PNG are the raster carriers.
+  // 3. Identical raster content is deduplicated within one print pass: three
+  //    references to the same 8x8 PNG yield two image XObjects. Object counts
+  //    are therefore a lower bound, not a reference count.
+  test('exports local images into the PDF', async function () {
+    this.timeout(120_000);
+    const repoRoot = path.resolve(__dirname, '..', '..');
+    const markdownPath = path.join(repoRoot, 'test-docs', 'local-images.md');
+    const pdfPath = markdownPath.replace(/\.md$/, '.pdf');
+    const htmlPath = markdownPath.replace(/\.md$/, '.html');
+    try { fs.rmSync(pdfPath, { force: true }); } catch { /* stale output */ }
+    try { fs.rmSync(htmlPath, { force: true }); } catch { /* stale output */ }
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(markdownPath);
+      await vscode.window.showTextDocument(document);
+
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const pdf = await waitForSettledPdf(pdfPath, 60_000);
+      assert.ok(pdf.length > 0, 'PDF output should be written and non-empty');
+      assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
+      // Markdown PNG + data-URI PNG must embed as real images. (The two
+      // blocked fixtures additionally draw the shared 14x16 placeholder —
+      // see the findings above — and the SVG references render as vector
+      // paths, so neither is counted here.)
+      const imageObjects = countImageObjects(pdf);
+      assert.ok(imageObjects >= 2, `expected at least 2 embedded images, found ${imageObjects}`);
+
+      // HTML export non-regression (§10.4): relative sources stay verbatim
+      // and the sanitizer still strips file: in HTML export.
+      await vscode.commands.executeCommand('extension.markdown-pdf.html');
+      const html = await waitForFileContent(
+        htmlPath,
+        (content) => content.includes('images/local.svg') && content.includes('images/local.png'),
+        30_000
+      );
+      assert.ok(html.includes('images/local.svg'), 'HTML export must keep the relative SVG source verbatim');
+      assert.ok(html.includes('images/local.png'), 'HTML export must keep the relative PNG source verbatim');
+      assert.ok(!html.includes('file:///etc/hosts'), 'HTML export must not gain file: resolution');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
+  test('embeds resolvable local images without broken-image placeholders', async function () {
+    this.timeout(120_000);
+    const repoRoot = path.resolve(__dirname, '..', '..');
+    const markdownPath = path.join(repoRoot, 'test-docs', 'local-images-resolvable.md');
+    const pdfPath = markdownPath.replace(/\.md$/, '.pdf');
+    try { fs.rmSync(pdfPath, { force: true }); } catch { /* stale output */ }
+
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(markdownPath);
+      await vscode.window.showTextDocument(document);
+
+      await vscode.commands.executeCommand('extension.markdown-pdf.pdf');
+      const pdf = await waitForSettledPdf(pdfPath, 60_000);
+      assert.ok(pdf.length > 0, 'PDF output should be written and non-empty');
+      assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
+      // Full tripwire (§10.3), valid for this document because it contains no
+      // blocked sources: the 14x16 broken-image placeholder must not appear.
+      // Matches /Width 14 exactly, not /Width 140.
+      const latin1 = pdf.toString('latin1');
+      assert.ok(!/\/Width 14\b/.test(latin1), 'broken-image placeholder (14x16) must not appear');
+      // At least the file-referenced PNG and the data-URI PNG embed as real
+      // images. Identical raster content is deduplicated within a print pass
+      // (three same-content references here yield two objects), so the object
+      // count is a lower bound rather than a reference count.
+      const imageObjects = countImageObjects(pdf);
+      assert.ok(imageObjects >= 2, `expected at least 2 embedded images, found ${imageObjects}`);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     }
   });
 

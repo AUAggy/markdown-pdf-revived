@@ -3,10 +3,12 @@ import * as vscode from 'vscode';
 import { config } from './config/settings';
 import { convertMarkdownToHtml } from './converter/markdown';
 import { sanitizeContent } from './converter/sanitize';
+import { resolveImagePaths, type ImagePathDiagnostics } from './converter/imagePaths';
 import { makeHtml } from './template/page';
 import { exportPdf } from './exporter/pdf';
 import { selectExportSource, type SourceSelection } from './exporter/source';
-import { showErrorMessage } from './utils/logger';
+import { showErrorMessage, reportBlockedImages } from './utils/logger';
+import { getAllowedRoot } from './utils/pathSecurity';
 import { isExistsPath } from './utils/file';
 import type { OptionType, ExportType } from './types';
 
@@ -141,7 +143,22 @@ async function markdownPdf(optionType: OptionType, source?: vscode.TextDocument)
         showErrorMessage('makeHtml(): Aborting export — content could not be sanitized.');
         return;
       }
-      const html = makeHtml(sanitized, uri, result.title);
+      // PDF only: resolve local image sources after sanitization. HTML export
+      // keeps author-written sources verbatim. A resolver failure aborts the
+      // export (fail-closed, like the sanitizer); per-image failures only drop
+      // that image and are reported as one aggregated warning.
+      const diagnostics: ImagePathDiagnostics = { blocked: 0, reasons: [] };
+      let resolved = sanitized;
+      if (type === 'pdf') {
+        try {
+          resolved = resolveImagePaths(sanitized, mdfilename, getAllowedRoot(mdfilename), diagnostics);
+        } catch (error) {
+          showErrorMessage('markdownPdf(): image resolution failed — export aborted.', error);
+          return;
+        }
+        reportBlockedImages(diagnostics.blocked, diagnostics.reasons);
+      }
+      const html = makeHtml(resolved, uri, result.title);
       if (!html) return;
       await exportPdf(html, outputFilename, type, uri);
     }
