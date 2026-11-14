@@ -43,12 +43,6 @@ export function readFile(filename: string, encode?: BufferEncoding | null): stri
   return fs.readFileSync(filename, encode ?? 'utf-8');
 }
 
-export function deleteFile(filePath: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const rimraf = require('rimraf') as { sync: (p: string) => void };
-  rimraf.sync(filePath);
-}
-
 export function mkdir(dirPath: string): void {
   if (isExistsDir(dirPath)) return;
   // eslint-disable-next-line @typescript-eslint/no-require-imports

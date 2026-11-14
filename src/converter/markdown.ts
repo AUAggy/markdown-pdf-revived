@@ -152,9 +152,9 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         },
       });
 
-      // Image path conversion
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const cheerio = require('cheerio') as { load: (s: string) => import('cheerio').CheerioAPI };
+      // Image path handling: for HTML export decode and strip quotes; for PDF
+      // export the source is left verbatim here and resolved after sanitization
+      // by resolveImagePaths() in the export loop.
       const defaultRender = md.renderer.rules['image'];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       md.renderer.rules['image'] = function (tokens: any[], idx: number, options: object, env: unknown, self: any): string {
@@ -162,26 +162,10 @@ export function convertMarkdownToHtml(filename: string, type: string, text: stri
         let href = token.attrs[token.attrIndex('src')][1] as string;
         if (type === 'html') {
           href = decodeURIComponent(href).replace(/("|')/g, '');
-        } else {
-          href = convertImgPath(href, filename, allowedRoot);
         }
         token.attrs[token.attrIndex('src')][1] = href;
         return defaultRender ? defaultRender(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options) as string;
       };
-
-      if (type !== 'html') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        md.renderer.rules['html_block'] = function (tokens: any[], idx: number): string {
-          const html = tokens[idx].content as string;
-          const $ = cheerio.load(html);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      $('img').each(function (_i: number, elem: any) {
-            const src = $(elem).attr('src') ?? '';
-            $(elem).attr('src', convertImgPath(src, filename, allowedRoot));
-          });
-          return $.html();
-        };
-      }
 
       // Plugins
       // eslint-disable-next-line @typescript-eslint/no-require-imports

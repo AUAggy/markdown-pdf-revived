@@ -186,7 +186,56 @@ describe('sanitizeContent', () => {
     }
   });
 
-  // Regression: inline <title> in prose triggers HTML5 RCDATA parsing mode in jsdom,
+  describe('sanitizeContent: image src contract (resolveImagePaths depends on this)', () => {
+  // These pin the §3.1 sanitizer contract the PDF image resolver is built on,
+  // so a future DOMPurify upgrade changes behaviour loudly instead of silently
+  // breaking local image export again.
+  function sanitizeSrc(src: string): string | undefined {
+    const result = sanitizeContent(`<p><img src="${src}" alt="a"></p>`);
+    assert.ok(result !== null, 'sanitization must succeed');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const cheerio = require('cheerio') as typeof import('cheerio');
+    return cheerio.load(result)('img').attr('src');
+  }
+
+  it('strips file: sources, including uppercase FILE:', () => {
+    assert.strictEqual(sanitizeSrc('file:///tmp/a.svg'), undefined);
+    assert.strictEqual(sanitizeSrc('FILE:///tmp/a.png'), undefined);
+  });
+
+  it('keeps relative, absolute, query and fragment path sources', () => {
+    assert.strictEqual(sanitizeSrc('assets/a.svg'), 'assets/a.svg');
+    assert.strictEqual(sanitizeSrc('/Users/me/a.png'), '/Users/me/a.png');
+    assert.strictEqual(sanitizeSrc('./a.png?v=1'), './a.png?v=1');
+    assert.strictEqual(sanitizeSrc('a.png#frag'), 'a.png#frag');
+  });
+
+  it('keeps protocol-relative sources — the resolver must drop them', () => {
+    assert.strictEqual(sanitizeSrc('//example.com/a.png'), '//example.com/a.png');
+  });
+
+  it('keeps base64 data: sources regardless of media type', () => {
+    assert.strictEqual(sanitizeSrc('data:image/svg+xml;base64,AAA'), 'data:image/svg+xml;base64,AAA');
+    assert.strictEqual(sanitizeSrc('data:text/html;base64,AAA'), 'data:text/html;base64,AAA');
+  });
+
+  it('keeps mailto:, cid: and xmpp: sources', () => {
+    assert.strictEqual(sanitizeSrc('mailto:x@y.z'), 'mailto:x@y.z');
+    assert.strictEqual(sanitizeSrc('cid:foo'), 'cid:foo');
+    assert.strictEqual(sanitizeSrc('xmpp:a@b'), 'xmpp:a@b');
+  });
+
+  it('keeps percent-encoded schemes — the classifier must decode first', () => {
+    assert.strictEqual(sanitizeSrc('file%3A%2F%2F%2Ftmp%2Fa.png'), 'file%3A%2F%2F%2Ftmp%2Fa.png');
+  });
+
+  it('strips javascript: sources and keeps an empty src verbatim', () => {
+    assert.strictEqual(sanitizeSrc('javascript:alert(1)'), undefined);
+    assert.strictEqual(sanitizeSrc(''), '');
+  });
+});
+
+// Regression: inline <title> in prose triggers HTML5 RCDATA parsing mode in jsdom,
   // causing all subsequent content to be swallowed as the title's raw text and then
   // silently dropped by DOMPurify — truncating the PDF output.
   it('preserves content after inline <title> tag in prose', () => {
