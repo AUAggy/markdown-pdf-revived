@@ -226,6 +226,22 @@ The output contains the rendered content of each included file in sequence.
 
 Includes are limited to 10 levels, detect circular references, and cannot leave the workspace by default. Set `markdown-pdf.allowPathsOutsideWorkspace` to `true` only for trusted cross-workspace files.
 
+## Images
+
+Images are resolved relative to the Markdown file and rendered into both PDF and HTML output.
+
+```markdown
+![Diagram](images/diagram.png)
+<img src="images/diagram.png" alt="Diagram">
+![Inline](data:image/png;base64,iVBORw0KGgo=)
+```
+
+- Relative and absolute paths must stay inside the workspace unless `markdown-pdf.allowPathsOutsideWorkspace` is enabled.
+- `data:` URIs are accepted for `png`, `jpeg`, `jpg`, `gif`, `webp` and `svg+xml`, base64-encoded, up to 2 MB decoded.
+- Sources that cannot be resolved are reported in one aggregated warning and keep their `alt` text.
+- Author-written `file://` image sources are not supported: the sanitizer removes them before export. Use a relative path or a `data:` URI.
+- SVG images render as vector graphics in PDF; bitmap formats are embedded as images.
+
 ## Page Breaks
 
 Insert a page break with:
@@ -239,6 +255,7 @@ Insert a page break with:
 - A supported browser must be installed separately for PDF export. The extension does not bundle or download a browser.
 - Online CSS URLs (e.g., `https://example.com/styles.css`) do not resolve reliably in PDF output. Prefer local stylesheet paths.
 - Inline `<style>` elements are blocked. Use a workspace-local file through `markdown-pdf.styles`.
+- Author-written `file://` image sources are blocked by the sanitizer. Use a relative path or a `data:` URI instead.
 
 ## Upgrade Notes
 

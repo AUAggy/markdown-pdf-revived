@@ -4,6 +4,18 @@ All notable changes are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [3.1.1] - 2026-11-14
+
+### Fixed
+
+- Local images now appear in exported PDFs. Image sources are resolved after sanitization instead of before it, so the sanitizer no longer discards paths the renderer produced. Relative and absolute paths inside the workspace, suffixes used as cache busters or anchors (`image.png?v=1`, `image.png#frag`), and `data:` image URIs up to 2 MB work in PDF export. HTML export is unchanged.
+- Image sources that cannot be resolved are now reported instead of failing silently: one aggregated warning per export lists the reasons, and the blocked image keeps its `alt` text.
+- Author-written `file://` image sources remain unsupported, and are still removed by the sanitizer before resolution. Use a relative path or a `data:` URI. This is a deliberate security boundary, not a regression.
+
+### Security
+
+- Removed the unused production dependency `rimraf`, which closed three moderate advisories that `npm audit --omit=dev` reported through `glob` and `minimatch` (`GHSA-3g3m-2fjr-6pw4`, `GHSA-g3hv-75wg-m249`, both published 30 October 2026). The dependency was reachable only from an uncalled helper and was already excluded from the bundle, so no shipped code changed. `npm audit --omit=dev` reports zero findings again.
+
 ## [3.1.0] - 2026-10-30
 
 ### Security
